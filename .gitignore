@@ -1,0 +1,9 @@
+node_modules/
+.env
+dist/
+build/
+.next/
+.serverless/
+firebase-key.json
+.DS_Store
+*.log

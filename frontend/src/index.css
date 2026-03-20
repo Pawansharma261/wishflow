@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-rose: #FF6B8A;
+  --color-brand-violet: #7B5EA7;
+  --background-image-gradient-brand: linear-gradient(135deg, #FF6B8A 0%, #7B5EA7 100%);
+  
+  --animate-bounce-slow: bounce 3s infinite;
+  --animate-fade-in: fadeIn 0.5s ease-out;
+
+  @keyframes fadeIn {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+}
+
+:root {
+  font-family: 'Outfit', sans-serif;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 min-h-screen;
+}
+
+.glass {
+  @apply bg-white/70 backdrop-blur-lg border border-white/20 shadow-xl;
+}
+
+.btn-primary {
+  @apply bg-gradient-brand text-white font-semibold py-3 px-6 rounded-2xl shadow-lg hover:shadow-brand-rose/20 hover:scale-105 transition-all duration-300 active:scale-95;
+}
+
+.btn-secondary {
+  @apply bg-white text-brand-violet border border-brand-violet/20 font-semibold py-3 px-6 rounded-2xl hover:bg-slate-50 transition-all duration-300;
+}
+
+.card {
+  @apply bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow duration-300;
+}
+
+.input-field {
+  @apply w-full bg-slate-100/50 border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-rose/50 transition-all;
+}
+
+/* Animations */
+.hover-lift {
+  @apply transition-transform duration-300 hover:-translate-y-1;
+}
