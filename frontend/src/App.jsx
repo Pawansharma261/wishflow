@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { supabase } from './lib/supabaseClient';
 
 // Pages
+import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
 import Scheduler from './pages/Scheduler';
@@ -49,7 +50,7 @@ const App = () => {
         {session && <Navbar />}
         <main className={`flex-grow ${session ? 'pb-24 lg:pb-0' : ''}`}>
           <Routes>
-            <Route path="/" element={session ? <Dashboard /> : <Navigate to="/auth" />} />
+            <Route path="/" element={session ? <Dashboard /> : <Landing />} />
             <Route path="/contacts" element={session ? <Contacts /> : <Navigate to="/auth" />} />
             <Route path="/scheduler" element={session ? <Scheduler /> : <Navigate to="/auth" />} />
             <Route path="/wishes" element={session ? <MyWishes /> : <Navigate to="/auth" />} />
