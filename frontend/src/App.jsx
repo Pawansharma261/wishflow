@@ -9,6 +9,7 @@ import Scheduler from './pages/Scheduler';
 import MyWishes from './pages/MyWishes';
 import Settings from './pages/Settings';
 import Auth from './pages/Auth';
+import Privacy from './pages/Privacy';
 
 // Components
 import Navbar from './components/Navbar';
@@ -54,6 +55,7 @@ const App = () => {
             <Route path="/wishes" element={session ? <MyWishes /> : <Navigate to="/auth" />} />
             <Route path="/settings" element={session ? <Settings /> : <Navigate to="/auth" />} />
             <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" />} />
+            <Route path="/privacy" element={<Privacy />} />
           </Routes>
         </main>
         {session && <MobileNav />}
