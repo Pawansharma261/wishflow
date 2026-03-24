@@ -6,6 +6,7 @@ const wishTrigger = require('./cron/wishTrigger');
 
 const http = require('http');
 const { Server } = require('socket.io');
+const axios = require('axios');
 
 const app = express();
 const server = http.createServer(app);
@@ -80,6 +81,14 @@ app.use('/api/scheduler', require('./routes/scheduler'));
 app.use('/api/integrations', require('./routes/integrations'));
 
 // Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -88,11 +97,17 @@ app.get('/', (req, res) => {
   });
 });
 
+// Self-Heartbeat: Best-effort to prevent Render free tier from sleeping (Every 10 mins)
+setInterval(() => {
+  const SELF_URL = process.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
+  axios.get(`${SELF_URL}/health`).catch(() => {});
+}, 10 * 60 * 1000); 
+
 // Cron: Check every minute for due wishes
 cron.schedule('* * * * *', () => {
   wishTrigger.checkAndSendWishes();
 });
 
 server.listen(PORT, () => {
-  console.log(`[WishFlow] Server (HTTP + WS) running on port ${PORT}`);
+  console.log(`[WishFlow] Server (HTTP + WS) running on port ${PORT} 🚀`);
 });
