@@ -1,4 +1,4 @@
-const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const useRedisAuthState = require('./useRedisAuthState');
 
@@ -15,11 +15,17 @@ const connectWhatsApp = async (userId, io) => {
   console.log(`[WhatsApp] Connecting for user ${userId}...`);
   try {
     const { state, saveCreds, clearState } = await useRedisAuthState(userId);
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`[WhatsApp] Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
     const sock = makeWASocket({
+      version,
       auth: state,
       printQRInTerminal: false,
-      logger: pino({ level: 'silent' }),
+      browser: Browsers.macOS('Desktop'),
+      logger: pino({ level: 'warn' }), // Changed from silent to warn to debug any silent failures
+      generateHighQualityLinkPreview: true,
+      syncFullHistory: false
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -35,14 +41,17 @@ const connectWhatsApp = async (userId, io) => {
       }
 
       if (connection === 'close') {
-        const shouldReconnect = (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut);
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = (statusCode !== DisconnectReason.loggedOut);
+        
+        console.error(`[WhatsApp] Disconnected: `, lastDisconnect?.error);
         
         if (io) {
           io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: shouldReconnect ? 'reconnecting' : 'loggedOut' });
         }
 
         if (shouldReconnect) {
-          console.log(`[WhatsApp] Connection closed for ${userId}, reconnecting...`);
+          console.log(`[WhatsApp] Connection closed for ${userId} (Code: ${statusCode}), reconnecting...`);
           sessions.delete(userId);
           setTimeout(() => connectWhatsApp(userId, io), 3000); // Retry after 3 seconds
         } else {
