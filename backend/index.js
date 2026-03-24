@@ -13,6 +13,8 @@ const allowedOrigins = [
   'http://localhost:5174',
   'http://localhost:5175',
   'https://wishflow-five.vercel.app',
+  'https://wishflow.in',
+  'https://www.wishflow.in',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
