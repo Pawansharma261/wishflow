@@ -108,9 +108,11 @@ const Landing = () => {
       <section className="pt-32 pb-20 px-6 relative overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-br from-pink-100 via-violet-50 to-pink-50 rounded-full blur-3xl opacity-60 -z-10" />
         <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-pink-50 to-violet-50 border border-pink-100 text-pink-600 px-4 py-2 rounded-full text-sm font-bold mb-8">
+          <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-pink-50 to-violet-50 border border-pink-100 text-pink-600 px-5 py-2.5 rounded-full text-sm font-bold mb-8 shadow-sm">
             <Heart size={14} className="fill-pink-500" />
             <span>Automate your celebrations ✨</span>
+            <span className="text-pink-300 font-normal px-1">|</span>
+            <span className="text-slate-500 font-medium">Powered by <strong className="text-slate-800">KP Technologies</strong></span>
           </div>
 
           <h1 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tight mb-6 leading-tight">
@@ -299,8 +301,10 @@ const Landing = () => {
             </div>
           </div>
           <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between text-white/40 text-sm">
-            <p>© 2026 WishFlow. All rights reserved.</p>
-            <p className="mt-2 md:mt-0">Made with ❤️ for celebrations</p>
+            <p>© 2026 KP Technologies. All rights reserved.</p>
+            <p className="mt-2 md:mt-0 font-medium tracking-wider">
+              Powered by <span className="font-black text-white/80">KP Technologies</span>
+            </p>
           </div>
         </div>
       </footer>

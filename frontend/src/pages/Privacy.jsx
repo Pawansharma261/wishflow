@@ -17,7 +17,7 @@ const Privacy = () => {
           
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-3">1. Introduction</h2>
-            <p>WishFlow ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our WishFlow application and related services.</p>
+            <p>WishFlow is a product of <strong>KP Technologies</strong> ("we," "our," or "us"). We are committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our WishFlow application and related services.</p>
           </section>
 
           <section>

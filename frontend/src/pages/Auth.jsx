@@ -248,10 +248,15 @@ const Auth = () => {
           </div>
         </div>
 
-        <p className="text-center text-white/30 text-xs mt-6">
-          By continuing, you agree to our{' '}
-          <Link to="/privacy" className="text-white/60 underline hover:text-white transition-colors">Privacy Policy</Link>
-        </p>
+        <div className="mt-8 text-center space-y-2 text-white/40 text-xs">
+          <p>
+            By continuing, you agree to our{' '}
+            <Link to="/privacy" className="text-white/60 underline hover:text-white transition-colors">Privacy Policy</Link>
+          </p>
+          <p className="font-medium tracking-wide">
+            Powered by <span className="font-black text-white/80">KP Technologies</span>
+          </p>
+        </div>
       </div>
     </div>
   );
