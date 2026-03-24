@@ -1,7 +1,9 @@
-const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
+const useRedisAuthState = require('./useRedisAuthState');
+const supabaseAdmin = require('../db/supabaseAdmin');
 
 // Keep connected sessions in memory for quick messaging (avoids reconnecting every message)
 // If server restarts, they will be lazy-loaded on the next message
@@ -15,8 +17,7 @@ const sessions = new Map();
 const connectWhatsApp = async (userId, io) => {
   console.log(`[WhatsApp] Connecting for user ${userId}...`);
   try {
-    const authFolder = `/tmp/wa_auth_${userId}`;
-    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+    const { state, saveCreds, clearState } = await useRedisAuthState(userId);
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`[WhatsApp] Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
@@ -59,13 +60,13 @@ const connectWhatsApp = async (userId, io) => {
         } else {
           console.log(`[WhatsApp] Connection closed for ${userId}, logged out.`);
           sessions.delete(userId);
-          if (fs.existsSync(authFolder)) {
-            fs.rmSync(authFolder, { recursive: true, force: true });
-          }
+          await clearState();
+          await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
         }
       } else if (connection === 'open') {
         console.log(`[WhatsApp] Opened connection for ${userId}`);
         sessions.set(userId, sock); // Store the active session
+        await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
         if (io) {
           io.to(userId).emit('whatsapp_status', { status: 'connected' });
         }

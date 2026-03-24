@@ -30,7 +30,12 @@ const Settings = () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUserId(user.id);
     const { data } = await supabase.from('users').select('*').eq('id', user.id).single();
-    if (data) setProfile({ ...data, email: user.email });
+    if (data) {
+      setProfile({ ...data, email: user.email });
+      if (data.whatsapp_connected) {
+        setWaStatus('connected');
+      }
+    }
     setLoading(false);
     
     // Initialize WebSockets

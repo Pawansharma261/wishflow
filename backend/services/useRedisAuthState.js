@@ -25,7 +25,6 @@ module.exports = async function useRedisAuthState(userId) {
     try {
       const data = await redis.get(key);
       if (data) {
-        // If the data is an object, stringify and then parse with BufferJSON
         const str = typeof data === 'string' ? data : JSON.stringify(data);
         return JSON.parse(str, BufferJSON.reviver);
       }
@@ -36,26 +35,15 @@ module.exports = async function useRedisAuthState(userId) {
     }
   };
 
-  // Helper to write data to Redis
   const writeData = async (key, data) => {
     try {
       const str = JSON.stringify(data, BufferJSON.replacer);
-      // Store with 30 days expiration (30 * 24 * 60 * 60 seconds = 2592000)
       await redis.set(key, str, { ex: 2592000 });
     } catch (err) {
       console.error('[RedisAuthState] Error writing data', err);
     }
   };
 
-  const removeData = async (key) => {
-    try {
-      await redis.del(key);
-    } catch (err) {
-      console.error('[RedisAuthState] Error removing data', err);
-    }
-  };
-
-  // Fetch initial state
   let creds = await readData(sessionKey);
   if (!creds) {
     creds = initAuthCreds();
@@ -66,32 +54,51 @@ module.exports = async function useRedisAuthState(userId) {
       creds,
       keys: {
         get: async (type, ids) => {
+          if (!ids || ids.length === 0) return {};
           const data = {};
-          await Promise.all(
-            ids.map(async (id) => {
-              let value = await readData(`${keysKey}:${type}-${id}`);
-              if (type === 'app-state-sync-key' && value) {
-                value = require('@whiskeysockets/baileys').proto.Message.AppStateSyncKeyData.fromObject(value);
+          try {
+            const allKeys = ids.map(id => `${keysKey}:${type}-${id}`);
+            const values = await redis.mget(...allKeys);
+            
+            ids.forEach((id, idx) => {
+              let value = values[idx];
+              if (value) {
+                const str = typeof value === 'string' ? value : JSON.stringify(value);
+                value = JSON.parse(str, BufferJSON.reviver);
+                if (type === 'app-state-sync-key') {
+                  value = require('@whiskeysockets/baileys').proto.Message.AppStateSyncKeyData.fromObject(value);
+                }
+                data[id] = value;
               }
-              data[id] = value;
-            })
-          );
+            });
+          } catch (e) {
+            console.error('[RedisAuthState] mget error:', e);
+          }
           return data;
         },
         set: async (data) => {
-          const tasks = [];
-          for (const category in data) {
-            for (const id in data[category]) {
-              const value = data[category][id];
-              const key = `${keysKey}:${category}-${id}`;
-              if (value) {
-                tasks.push(writeData(key, value));
-              } else {
-                tasks.push(removeData(key));
+          try {
+            const p = redis.pipeline();
+            let ops = 0;
+            for (const category in data) {
+              for (const id in data[category]) {
+                const value = data[category][id];
+                const key = `${keysKey}:${category}-${id}`;
+                if (value) {
+                  const str = JSON.stringify(value, BufferJSON.replacer);
+                  p.set(key, str, { ex: 2592000 });
+                } else {
+                  p.del(key);
+                }
+                ops++;
               }
             }
+            if (ops > 0) {
+              await p.exec();
+            }
+          } catch (e) {
+            console.error('[RedisAuthState] pipeline set error:', e);
           }
-          await Promise.all(tasks);
         }
       }
     },
@@ -99,10 +106,7 @@ module.exports = async function useRedisAuthState(userId) {
       return writeData(sessionKey, creds);
     },
     clearState: async () => {
-      // Find all keys starting with whatsapp_keys:userId and delete them
-      // In Upstash REST, SCAN or pattern deletion is limited, so we rely on TTL
-      // But we can easily clear the main session key
-      await removeData(sessionKey);
+      await redis.del(sessionKey);
       console.log(`[RedisAuthState] Cleared session for user ${userId}`);
     }
   };
