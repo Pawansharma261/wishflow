@@ -105,8 +105,36 @@ const sendWhatsAppWish = async (userId, targetPhone, text) => {
       console.log(`[WhatsApp] Session not in memory for ${userId}, booting temporarily...`);
       // We pass null for IO since this is a background job silently waking up
       sock = await connectWhatsApp(userId, null);
-      // Wait for it to connect properly. Normally we'd want to handle the promise logic for "open" event,
-      // but Baileys queues messages internally while connecting.
+      
+      // Wait for the socket to reach 'open' status so sendMessage doesn't falsely timeout
+      await new Promise((resolve) => {
+        let isResolved = false;
+        
+        // Setup listener
+        const listener = (update) => {
+          if (isResolved) return;
+          if (update.connection === 'open') {
+            isResolved = true;
+            sock.ev.off('connection.update', listener);
+            resolve();
+          } else if (update.connection === 'close') {
+            isResolved = true;
+            sock.ev.off('connection.update', listener);
+            resolve();
+          }
+        };
+        sock.ev.on('connection.update', listener);
+
+        // Failsafe 10-second timeout
+        setTimeout(() => {
+          if (!isResolved) {
+            isResolved = true;
+            sock.ev.off('connection.update', listener);
+            console.log(`[WhatsApp] Waited 10s for open connection, proceeding to internal queue...`);
+            resolve();
+          }
+        }, 10000);
+      });
     }
 
     console.log(`[WhatsApp] Sending message from ${userId} to ${cleanPhone}...`);
