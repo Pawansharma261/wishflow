@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_url TEXT,
   instagram_access_token TEXT,
   whatsapp_api_key TEXT, -- User-wide CallMeBot key (optional if per contact)
+  whatsapp_connected BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

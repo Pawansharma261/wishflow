@@ -8,7 +8,7 @@ import QRCode from 'qrcode';
 const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
 
 const Settings = () => {
-  const [profile, setProfile] = useState({ name: '', email: '', whatsapp_connected: false, instagram_connected: false });
+  const [profile, setProfile] = useState({ name: '', email: '', whatsapp_connected: false, instagram_access_token: null });
   const [loading, setLoading] = useState(true);
 
   // WhatsApp State
@@ -55,7 +55,7 @@ const Settings = () => {
       if (res.error) throw new Error(res.error);
       
       alert('Instagram Professional Account fully connected! ✨');
-      setProfile(p => ({ ...p, instagram_connected: true }));
+      setProfile(p => ({ ...p, instagram_access_token: 'active' })); // Just need truthy value to show connected
       
       // Clean up the URL parameter without reloading
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -236,7 +236,7 @@ const Settings = () => {
                     <h3 className="font-bold text-white text-lg">Instagram</h3>
                   </div>
                   
-                  {profile.instagram_connected ? (
+                  {profile.instagram_access_token ? (
                     <span className="flex items-center space-x-1.5 bg-pink-500/20 text-pink-400 px-3 py-1 rounded-full text-xs font-bold">
                       <CheckCircle2 size={14} /><span>Connected</span>
                     </span>
