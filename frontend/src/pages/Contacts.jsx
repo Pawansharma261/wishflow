@@ -160,6 +160,8 @@ const Contacts = () => {
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES.find(c => c.code === 'IN'));
+  const [editingId, setEditingId] = useState(null);
+  const [contactToDelete, setContactToDelete] = useState(null);
 
   const [formData, setFormData] = useState({
     name: '', relationship: 'friend', phone_number: '',
@@ -175,30 +177,73 @@ const Contacts = () => {
     setLoading(false);
   };
 
-  const handleAddContact = async (e) => {
+  const handleEditClick = (contact) => {
+    let phoneNum = contact.phone_number || '';
+    let matchedCountry = COUNTRIES.find(c => phoneNum.startsWith(c.dial));
+    
+    if (matchedCountry) {
+       setSelectedCountry(matchedCountry);
+       phoneNum = phoneNum.substring(matchedCountry.dial.length);
+    } else {
+       setSelectedCountry(COUNTRIES.find(c => c.code === 'IN'));
+    }
+    
+    setFormData({
+      name: contact.name,
+      relationship: contact.relationship,
+      phone_number: phoneNum,
+      instagram_username: contact.instagram_username || '',
+      birthday: contact.birthday ? contact.birthday.substring(0, 10) : '',
+      anniversary: contact.anniversary ? contact.anniversary.substring(0, 10) : '',
+      callmebot_api_key: contact.callmebot_api_key || ''
+    });
+    setEditingId(contact.id);
+    setShowModal(true);
+  };
+
+  const closeFormModal = () => {
+    setShowModal(false);
+    setEditingId(null);
+    setFormData({ name: '', relationship: 'friend', phone_number: '', instagram_username: '', birthday: '', anniversary: '', callmebot_api_key: '' });
+    setSelectedCountry(COUNTRIES.find(c => c.code === 'IN'));
+  };
+
+  const handleSaveContact = async (e) => {
     e.preventDefault();
     const { data: { user } } = await supabase.auth.getUser();
     const fullPhone = formData.phone_number
       ? `${selectedCountry.dial}${formData.phone_number.replace(/^0/, '')}`
       : '';
-    const { error } = await supabase.from('contacts').insert({
-      ...formData,
-      phone_number: fullPhone,
-      user_id: user.id,
-    });
-    if (!error) {
-      setShowModal(false);
-      setFormData({ name: '', relationship: 'friend', phone_number: '', instagram_username: '', birthday: '', anniversary: '', callmebot_api_key: '' });
-      setSelectedCountry(COUNTRIES.find(c => c.code === 'IN'));
-      fetchContacts();
+      
+    if (editingId) {
+       const { error } = await supabase.from('contacts').update({
+         ...formData, phone_number: fullPhone
+       }).eq('id', editingId);
+       if (!error) {
+         fetchContacts();
+         closeFormModal();
+       }
+    } else {
+       const { error } = await supabase.from('contacts').insert({
+         ...formData, phone_number: fullPhone, user_id: user.id,
+       });
+       if (!error) {
+         fetchContacts();
+         closeFormModal();
+       }
     }
   };
 
-  const deleteContact = async (id) => {
-    if (confirm('Delete this contact?')) {
-      await supabase.from('contacts').delete().eq('id', id);
-      fetchContacts();
+  const confirmDelete = async () => {
+    if (!contactToDelete) return;
+    const { error } = await supabase.from('contacts').delete().eq('id', contactToDelete);
+    if (error) {
+       console.error(error);
+       alert('Failed to delete contact.');
+    } else {
+       fetchContacts();
     }
+    setContactToDelete(null);
   };
 
   const filteredContacts = contacts.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
@@ -244,9 +289,9 @@ const Contacts = () => {
                 <div className="w-14 h-14 bg-gradient-to-br from-pink-500 to-violet-600 rounded-2xl flex items-center justify-center text-2xl font-black text-white shadow-lg">
                   {contact.name[0]}
                 </div>
-                <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="p-2 text-white/40 hover:text-violet-400 hover:bg-violet-400/10 rounded-xl transition-all"><Edit2 size={15} /></button>
-                  <button onClick={() => deleteContact(contact.id)} className="p-2 text-white/40 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all"><Trash2 size={15} /></button>
+                <div className="flex space-x-1 transition-opacity">
+                  <button onClick={() => handleEditClick(contact)} className="p-2 text-white/50 hover:text-white hover:bg-white/10 rounded-xl transition-all" title="Edit Contact"><Edit2 size={18} /></button>
+                  <button onClick={() => setContactToDelete(contact.id)} className="p-2 text-white/50 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all" title="Delete Contact"><Trash2 size={18} /></button>
                 </div>
               </div>
               <h3 className="text-lg font-black text-white mb-1">{contact.name}</h3>
@@ -270,29 +315,29 @@ const Contacts = () => {
         </div>
       )}
 
-      {/* ── Add Contact Modal ───────────────────────────────────────────── */}
+      {/* ── Add/Edit Contact Modal ───────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-[#1a1740] border border-white/15 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-7">
-              <h2 className="text-2xl font-black text-white">Add New Contact</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all">
+              <h2 className="text-2xl font-black text-white">{editingId ? 'Edit Contact' : 'Add New Contact'}</h2>
+              <button onClick={closeFormModal} className="p-2 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all">
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleAddContact} className="space-y-4">
+            <form onSubmit={handleSaveContact} className="space-y-4">
               {/* Name */}
               <input
                 type="text" placeholder="Full Name" required
-                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all"
+                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all cursor-text font-medium"
                 value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
               />
 
               {/* Relationship */}
               <select
-                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all appearance-none"
+                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all appearance-none cursor-pointer font-medium"
                 value={formData.relationship} onChange={e => setFormData({ ...formData, relationship: e.target.value })}
                 style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
               >
@@ -310,7 +355,7 @@ const Contacts = () => {
                   <input
                     type="tel"
                     placeholder="Phone number"
-                    className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all"
+                    className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all cursor-text"
                     value={formData.phone_number}
                     onChange={e => setFormData({ ...formData, phone_number: e.target.value })}
                   />
@@ -325,7 +370,7 @@ const Contacts = () => {
               {/* Instagram */}
               <input
                 type="text" placeholder="Instagram Username (without @)"
-                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all"
+                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all cursor-text"
                 value={formData.instagram_username} onChange={e => setFormData({ ...formData, instagram_username: e.target.value })}
               />
 
@@ -334,30 +379,30 @@ const Contacts = () => {
                 <div>
                   <label className="text-xs font-bold text-white/50 uppercase tracking-widest mb-2 block pl-1">Birthday</label>
                   <input type="date"
-                    className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all"
+                    className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all cursor-pointer font-medium"
                     value={formData.birthday} onChange={e => setFormData({ ...formData, birthday: e.target.value })}
                   />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-white/50 uppercase tracking-widest mb-2 block pl-1">Anniversary</label>
                   <input type="date"
-                    className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all"
+                    className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all cursor-pointer font-medium"
                     value={formData.anniversary} onChange={e => setFormData({ ...formData, anniversary: e.target.value })}
                   />
                 </div>
               </div>
 
-              {/* CallMeBot */}
+              {/* CallMeBot (Optional) */}
               <input
-                type="text" placeholder="CallMeBot API Key (for WhatsApp messages)"
-                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all"
+                type="text" placeholder="CallMeBot API Key (optional fallback)"
+                className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3.5 text-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all"
                 value={formData.callmebot_api_key} onChange={e => setFormData({ ...formData, callmebot_api_key: e.target.value })}
               />
 
               {/* Buttons */}
               <div className="flex space-x-3 pt-2">
                 <button
-                  type="button" onClick={() => setShowModal(false)}
+                  type="button" onClick={closeFormModal}
                   className="flex-1 bg-white/10 border border-white/20 text-white font-bold py-3.5 rounded-2xl hover:bg-white/20 transition-all"
                 >
                   Cancel
@@ -366,10 +411,29 @@ const Contacts = () => {
                   type="submit"
                   className="flex-1 bg-gradient-to-r from-pink-500 to-violet-600 text-white font-bold py-3.5 rounded-2xl hover:shadow-lg hover:scale-[1.02] transition-all"
                 >
-                  Save Contact
+                  {editingId ? 'Save Edits' : 'Save Contact'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal Overlay */}
+      {contactToDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-scale-in">
+             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} />
+             </div>
+             <h3 className="text-2xl font-black text-center mb-2 text-slate-900">Delete Contact?</h3>
+             <p className="text-slate-500 text-center mb-8 font-medium border-none outline-none">
+               This contact will be permanently removed. Scheduled wishes for them may fail.
+             </p>
+             <div className="flex space-x-4">
+                <button onClick={() => setContactToDelete(null)} className="flex-1 py-3 rounded-xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
+                <button onClick={confirmDelete} className="flex-1 py-3 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all">Delete</button>
+             </div>
           </div>
         </div>
       )}
