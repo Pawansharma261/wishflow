@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import apiClient from '../lib/apiClient';
+import { apiClient } from '../lib/apiClient';
 import { User, Bell, Shield, Instagram, Phone, Key, HelpCircle, Loader, CheckCircle2, QrCode } from 'lucide-react';
 import { io } from 'socket.io-client';
 import QRCode from 'qrcode';
