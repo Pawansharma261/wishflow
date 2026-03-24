@@ -78,21 +78,21 @@ const Dashboard = () => {
   };
 
   const widgets = [
-    { title: 'Total Contacts', value: stats.totalContacts, icon: <Users className="text-blue-500" />, color: 'bg-blue-50' },
-    { title: 'Wishes Sent', value: stats.sentWishes, icon: <Send className="text-green-500" />, color: 'bg-green-50' },
-    { title: 'Pending', value: stats.pendingWishes, icon: <Clock className="text-orange-500" />, color: 'bg-orange-50' },
+    { title: 'Total Contacts', value: stats.totalContacts, icon: <Users className="text-blue-500" />, color: 'bg-blue-50', link: '/contacts' },
+    { title: 'Wishes Sent', value: stats.sentWishes, icon: <Send className="text-green-500" />, color: 'bg-green-50', link: '/wishes?filter=sent' },
+    { title: 'Pending', value: stats.pendingWishes, icon: <Clock className="text-orange-500" />, color: 'bg-orange-50', link: '/wishes?filter=pending' },
   ];
 
   return (
     <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
         <div>
-          <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mb-2">
+          <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight mb-2">
             Hey there! 👋
           </h1>
-          <p className="text-slate-500 font-medium">Your automated celebration assistant is ready.</p>
+          <p className="text-white/60 font-medium">Your automated celebration assistant is ready.</p>
         </div>
-        <Link to="/scheduler" className="btn-primary flex items-center justify-center space-x-2 w-full lg:w-auto">
+        <Link to="/scheduler" className="btn-primary flex items-center justify-center space-x-2 w-full lg:w-auto px-8 py-4">
           <Sparkles size={18} />
           <span>Automate New Wish</span>
         </Link>
@@ -100,7 +100,7 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         {widgets.map((w, i) => (
-          <div key={i} className="card flex items-center space-x-6">
+          <Link to={w.link} key={i} className="card flex items-center space-x-6 hover:scale-105 transition-all shadow-xl hover:shadow-2xl cursor-pointer">
             <div className={`p-4 rounded-2xl ${w.color}`}>
               {w.icon}
             </div>
@@ -108,14 +108,14 @@ const Dashboard = () => {
               <p className="text-slate-500 text-sm font-bold uppercase tracking-widest mb-1">{w.title}</p>
               <h3 className="text-3xl font-black text-slate-900">{w.value}</h3>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         <div className="lg:col-span-2 space-y-8">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-black text-slate-900">Upcoming Scheduled</h2>
+            <h2 className="text-2xl font-black text-white">Upcoming Scheduled</h2>
             <Link to="/wishes" className="text-brand-rose font-bold text-sm flex items-center hover:translate-x-1 transition-transform">
               View All <ChevronRight size={16} />
             </Link>
@@ -151,7 +151,7 @@ const Dashboard = () => {
         </div>
 
         <div className="space-y-8">
-          <h2 className="text-2xl font-black text-slate-900">Celebration Radar</h2>
+          <h2 className="text-2xl font-black text-white">Celebration Radar</h2>
           <div className="bg-gradient-brand rounded-[2.5rem] p-8 text-white relative overflow-hidden">
             <div className="relative z-10">
               {radarEvent ? (

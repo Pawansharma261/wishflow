@@ -2,12 +2,24 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Calendar, Filter, Clock, CheckCircle2, XCircle, MoreVertical, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const MyWishes = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [wishToDelete, setWishToDelete] = useState(null); // ID of the wish selected for deletion
+
+  useEffect(() => {
+    // Read filter directly from navigation URL parameters
+    const params = new URLSearchParams(location.search);
+    const searchFilter = params.get('filter');
+    if (searchFilter && ['all', 'pending', 'sent'].includes(searchFilter)) {
+      setFilter(searchFilter);
+    }
+  }, [location]);
 
   useEffect(() => {
     fetchWishes();
@@ -69,7 +81,10 @@ const MyWishes = () => {
           {['all', 'pending', 'sent'].map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
+              onClick={() => {
+                setFilter(f);
+                navigate(`/wishes?filter=${f}`, { replace: true });
+              }}
               className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${filter === f ? 'bg-white shadow-xl text-slate-900' : 'text-white/60 hover:text-white'}`}
             >
               <span className="capitalize">{f}</span>
