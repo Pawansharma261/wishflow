@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format, differenceInDays, addYears, isBefore } from 'date-fns';
+import { io } from 'socket.io-client';
 
 const getNextOccurrence = (dateStr) => {
   if (!dateStr) return null;
@@ -23,13 +24,40 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    
+    // Setup Socket for Real-time Status Sync
+    let socket;
+    const setupSocket = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
+      socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+      
+      socket.on('connect', () => {
+        socket.emit('register', user.id);
+      });
+
+      socket.on('whatsapp_status', (data) => {
+        setProfile(prev => ({ 
+          ...prev, 
+          whatsapp_connected: (data.status === 'connected') 
+        }));
+      });
+    };
+
+    setupSocket();
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
   }, []);
 
   const fetchDashboardData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     
-    // Fetch profile status
-    const { data: userData } = await supabase.from('users').select('whatsapp_connected, instagram_access_token').eq('id', user.id).single();
+    const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
     if (userData) {
       setProfile({
         whatsapp_connected: userData.whatsapp_connected,
