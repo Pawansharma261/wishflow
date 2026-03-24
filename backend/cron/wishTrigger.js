@@ -1,5 +1,5 @@
 const supabaseAdmin = require('../db/supabaseAdmin');
-const { sendWhatsApp } = require('../services/whatsappService');
+const { sendWhatsAppWish } = require('../services/whatsappService');
 const { sendInstagramDM } = require('../services/instagramService');
 const { sendPushNotification } = require('../services/pushService');
 
@@ -31,16 +31,15 @@ const checkAndSendWishes = async () => {
 
       const results = [];
 
-      // === WhatsApp via CallMeBot ===
+      // === WhatsApp via Baileys (Real Device) ===
       if (channels.includes('whatsapp') && contact.phone_number) {
-        // Use contact-specific key first, fallback to user-level key
-        const apiKey = contact.callmebot_api_key || user.whatsapp_api_key;
-        if (apiKey) {
-          const res = await sendWhatsApp(contact.phone_number, wish_message, apiKey);
-          results.push({ channel: 'whatsapp', status: res.success ? 'sent' : 'failed', payload: res });
-          console.log(`[WishFlow] WhatsApp to ${contact.phone_number}: ${res.success ? '✅ sent' : '❌ failed'}`);
-        } else {
-          results.push({ channel: 'whatsapp', status: 'failed', payload: { error: 'No CallMeBot API key configured for this contact or user.' } });
+        try {
+          const success = await sendWhatsAppWish(user_id, contact.phone_number, wish_message);
+          results.push({ channel: 'whatsapp', status: success ? 'sent' : 'failed', payload: { success } });
+          console.log(`[WishFlow] WhatsApp to ${contact.phone_number}: ${success ? '✅ sent' : '❌ failed'}`);
+        } catch (error) {
+          results.push({ channel: 'whatsapp', status: 'failed', payload: { error: error.message } });
+          console.log(`[WishFlow] WhatsApp to ${contact.phone_number}: ❌ failed (${error.message})`);
         }
       }
 

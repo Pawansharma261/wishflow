@@ -1,120 +1,261 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { User, Bell, Settings as SettingsIcon, Shield, Instagram, Phone, Key, HelpCircle } from 'lucide-react';
+import apiClient from '../lib/apiClient';
+import { User, Bell, Shield, Instagram, Phone, Key, HelpCircle, Loader, CheckCircle2, QrCode } from 'lucide-react';
+import { io } from 'socket.io-client';
+import QRCode from 'qrcode';
+
+const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const Settings = () => {
-  const [profile, setProfile] = useState({ name: '', email: '', whatsapp_api_key: '', instagram_access_token: '' });
+  const [profile, setProfile] = useState({ name: '', email: '', whatsapp_connected: false, instagram_connected: false });
   const [loading, setLoading] = useState(true);
+
+  // WhatsApp State
+  const [waLoading, setWaLoading] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+  const [waStatus, setWaStatus] = useState('disconnected'); // 'disconnected', 'connecting', 'connected', 'qr_ready'
+  
+  const socketRef = useRef(null);
+  const [userId, setUserId] = useState(null);
 
   useEffect(() => {
     fetchProfile();
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
   }, []);
 
   const fetchProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    setUserId(user.id);
     const { data } = await supabase.from('users').select('*').eq('id', user.id).single();
     if (data) setProfile({ ...data, email: user.email });
     setLoading(false);
+    
+    // Initialize WebSockets
+    initSocket(user.id);
+  };
+
+  const initSocket = (uid) => {
+    if (socketRef.current) return;
+    
+    const socket = io(SOCKET_URL);
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('Connected to WebSocket');
+      socket.emit('register', uid);
+    });
+
+    socket.on('whatsapp_qr', async (data) => {
+      console.log('Received WhatsApp QR');
+      try {
+        const url = await QRCode.toDataURL(data.qr, { margin: 2, scale: 8, color: { dark: '#1e1b4b', light: '#ffffff' } });
+        setQrCodeDataUrl(url);
+        setWaStatus('qr_ready');
+        setWaLoading(false);
+      } catch (err) {
+        console.error('Error rendering QR:', err);
+      }
+    });
+
+    socket.on('whatsapp_status', (data) => {
+      console.log('WhatsApp Status:', data.status);
+      setWaStatus(data.status); // 'connected', 'disconnected', etc.
+      if (data.status === 'connected') {
+        setProfile(p => ({ ...p, whatsapp_connected: true }));
+        setWaLoading(false);
+        setQrCodeDataUrl('');
+      } else if (data.status === 'disconnected') {
+        setProfile(p => ({ ...p, whatsapp_connected: false }));
+      }
+    });
+  };
+
+  const connectWhatsApp = async () => {
+    setWaLoading(true);
+    setWaStatus('connecting');
+    try {
+      await apiClient.post('/integrations/whatsapp/connect', { userId });
+      // The rest is handled by websockets
+    } catch (err) {
+      alert('Failed to initiate connection. Please try again.');
+      setWaLoading(false);
+      setWaStatus('disconnected');
+    }
+  };
+
+  const connectInstagram = async () => {
+    try {
+      const res = await apiClient.get('/integrations/instagram/oauth');
+      window.location.href = res.data.url;
+    } catch (err) {
+      alert('Failed to get Instagram OAuth URL');
+    }
   };
 
   const handleUpdate = async (e) => {
     e.preventDefault();
-    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('users').upsert({
-      id: user.id,
+      id: userId,
       name: profile.name,
-      whatsapp_api_key: profile.whatsapp_api_key,
-      instagram_access_token: profile.instagram_access_token
     });
-    
     if (!error) alert('Settings updated!');
     else alert(error.message);
   };
 
-  return (
-    <div className="container mx-auto max-w-4xl px-4 py-8 lg:py-12">
-      <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mb-12">Settings</h1>
+  if (loading) return <div className="text-center py-20 text-white/50">Loading settings...</div>;
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        <div className="lg:col-span-1 space-y-2">
-          <button className="w-full flex items-center space-x-3 p-4 bg-white rounded-2xl border border-brand-rose/20 text-brand-rose font-bold">
-            <User size={20} />
-            <span>Profile Details</span>
+  return (
+    <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
+      <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight mb-10">Settings</h1>
+
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+        <div className="xl:col-span-1 space-y-2">
+          <button className="w-full flex items-center space-x-3 p-4 bg-white/10 rounded-2xl border border-white/20 text-white font-bold transition-all">
+            <User size={20} /><span>Account</span>
           </button>
-          <button className="w-full flex items-center space-x-3 p-4 hover:bg-white rounded-2xl text-slate-500 font-bold transition-colors">
-            <Bell size={20} />
-            <span>Notifications</span>
+          <button className="w-full flex items-center space-x-3 p-4 hover:bg-white/5 rounded-2xl text-white/50 font-bold transition-all">
+            <Bell size={20} /><span>Notifications</span>
           </button>
-          <button className="w-full flex items-center space-x-3 p-4 hover:bg-white rounded-2xl text-slate-500 font-bold transition-colors">
-            <Shield size={20} />
-            <span>Privacy & Security</span>
-          </button>
-          <button className="w-full flex items-center space-x-3 p-4 hover:bg-white rounded-2xl text-slate-500 font-bold transition-colors">
-            <HelpCircle size={20} />
-            <span>Help Center</span>
+          <button className="w-full flex items-center space-x-3 p-4 hover:bg-white/5 rounded-2xl text-white/50 font-bold transition-all">
+            <Shield size={20} /><span>Privacy</span>
           </button>
         </div>
 
-        <div className="lg:col-span-2">
-          <form onSubmit={handleUpdate} className="space-y-8">
-            <div className="card space-y-6">
-              <h2 className="text-xl font-black text-slate-900">Connections</h2>
+        <div className="xl:col-span-3 space-y-8">
+          
+          {/* Messaging Integrations */}
+          <div className="bg-white/10 backdrop-blur-md border border-white/15 rounded-[2.5rem] p-8 shadow-2xl">
+            <h2 className="text-2xl font-black text-white mb-6">Messaging Integrations</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-2 px-2 uppercase tracking-widest flex items-center">
-                    <Phone size={14} className="mr-2" />
-                    WhatsApp CallMeBot API Key
-                  </label>
-                  <input 
-                    type="text" className="input-field font-mono text-sm" placeholder="Your API Key"
-                    value={profile.whatsapp_api_key || ''}
-                    onChange={e => setProfile({...profile, whatsapp_api_key: e.target.value})}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-2 px-2 leading-relaxed">
-                    Message <span className="font-bold text-slate-600">+34 644 45 70 57</span> with <span className="italic font-bold">"I allow callmebot to send me messages"</span> to get your free key instantly.
-                  </p>
+              {/* WhatsApp (Baileys) Panel */}
+              <div className="bg-[#1e1e38] rounded-3xl p-6 border border-white/10 relative overflow-hidden flex flex-col h-full">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full blur-3xl" />
+                
+                <div className="flex items-center justify-between mb-4 relative z-10">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
+                      <Phone className="text-green-500" size={20} />
+                    </div>
+                    <h3 className="font-bold text-white text-lg">WhatsApp</h3>
+                  </div>
+                  
+                  {waStatus === 'connected' ? (
+                    <span className="flex items-center space-x-1.5 bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-xs font-bold">
+                      <CheckCircle2 size={14} /><span>Connected</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center space-x-1.5 bg-white/10 text-white/50 px-3 py-1 rounded-full text-xs font-bold">
+                      <span className="w-2 h-2 rounded-full bg-white/30" /><span>Disconnected</span>
+                    </span>
+                  )}
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-2 px-2 uppercase tracking-widest flex items-center">
-                    <Instagram size={14} className="mr-2" />
-                    Meta Instagram Access Token
-                  </label>
-                  <input 
-                    type="password" className="input-field font-mono text-sm" placeholder="Meta Graph API Token"
-                    value={profile.instagram_access_token || ''}
-                    onChange={e => setProfile({...profile, instagram_access_token: e.target.value})}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-2 px-2 leading-relaxed">
-                    1. Go to <a href="https://developers.facebook.com/apps/958735563279395" target="_blank" className="underline text-brand-rose">App Dashboard</a>. 2. Click "Add Product" and set up "Messenger". 3. Connect your IG account in Settings.
-                  </p>
+                <p className="text-white/50 text-sm mb-6 flex-1 relative z-10">
+                  Connect your real WhatsApp account to send wishes directly from your phone number. WishFlow acts as a linked companion device.
+                </p>
+
+                <div className="mt-auto relative z-10">
+                  {waStatus === 'connected' ? (
+                    <button onClick={connectWhatsApp} className="w-full bg-white/10 text-white font-bold py-3.5 rounded-2xl hover:bg-white/20 transition-all text-sm border border-white/20">
+                      Reconnect Device
+                    </button>
+                  ) : waStatus === 'qr_ready' && qrCodeDataUrl ? (
+                    <div className="flex flex-col items-center p-4 bg-white rounded-2xl">
+                      <img src={qrCodeDataUrl} alt="WhatsApp QR Code" className="w-48 h-48 mb-3" />
+                      <p className="text-slate-800 font-bold text-sm text-center">Scan with WhatsApp</p>
+                      <p className="text-slate-500 text-xs text-center mt-1">Linked Devices → Link a Device</p>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={connectWhatsApp} 
+                      disabled={waLoading}
+                      className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-green-900/50 flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
+                    >
+                      {waLoading ? <Loader size={18} className="animate-spin" /> : <QrCode size={18} />}
+                      <span>{waLoading ? 'Generating QR...' : 'Generate Connection QR'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div className="card space-y-6">
-              <h2 className="text-xl font-black text-slate-900">Personal Info</h2>
-              <div className="space-y-4">
+              {/* Instagram (Meta) Panel */}
+              <div className="bg-[#1e1e38] rounded-3xl p-6 border border-white/10 relative overflow-hidden flex flex-col h-full">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl" />
+                
+                <div className="flex items-center justify-between mb-4 relative z-10">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gradient-to-tr from-pink-500 to-purple-500 rounded-xl flex items-center justify-center opacity-80">
+                      <Instagram className="text-white" size={20} />
+                    </div>
+                    <h3 className="font-bold text-white text-lg">Instagram</h3>
+                  </div>
+                  
+                  {profile.instagram_connected ? (
+                    <span className="flex items-center space-x-1.5 bg-pink-500/20 text-pink-400 px-3 py-1 rounded-full text-xs font-bold">
+                      <CheckCircle2 size={14} /><span>Connected</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center space-x-1.5 bg-white/10 text-white/50 px-3 py-1 rounded-full text-xs font-bold">
+                      <span className="w-2 h-2 rounded-full bg-white/30" /><span>Disconnected</span>
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-white/50 text-sm mb-6 flex-1 relative z-10">
+                  Connect your Instagram Professional/Creator account via Meta Graph API to send direct messages to your followers.
+                </p>
+
+                <div className="mt-auto relative z-10">
+                  <button 
+                    onClick={connectInstagram}
+                    className="w-full bg-gradient-to-r from-pink-500 to-violet-600 text-white font-bold py-3.5 rounded-2xl hover:scale-[1.02] transition-all shadow-lg shadow-pink-900/50 text-sm"
+                  >
+                    Connect with Facebook
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Profile Details */}
+          <div className="bg-white/10 backdrop-blur-md border border-white/15 rounded-[2.5rem] p-8 shadow-2xl">
+            <h2 className="text-2xl font-black text-white mb-6">Personal Details</h2>
+            <form onSubmit={handleUpdate} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-2 px-2 uppercase tracking-widest">Full Name</label>
+                  <label className="text-xs font-bold text-white/50 uppercase tracking-widest pl-1 block mb-2">Display Name</label>
                   <input 
-                    type="text" className="input-field" placeholder="Pawan Kumar"
+                    type="text" 
+                    className="w-full bg-[#1e1e38] border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all font-medium"
+                    placeholder="Your Name"
                     value={profile.name || ''}
                     onChange={e => setProfile({...profile, name: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-400 block mb-2 px-2 uppercase tracking-widest">Email Address</label>
-                  <input type="email" className="input-field bg-slate-100 cursor-not-allowed" value={profile.email || ''} disabled />
+                  <label className="text-xs font-bold text-white/50 uppercase tracking-widest pl-1 block mb-2">Email Address</label>
+                  <input 
+                    type="email" 
+                    className="w-full bg-white/5 border border-transparent rounded-2xl px-4 py-3.5 text-white/50 cursor-not-allowed font-medium" 
+                    value={profile.email || ''} 
+                    disabled 
+                  />
                 </div>
               </div>
-            </div>
+              <div className="pt-2">
+                <button type="submit" className="bg-white/10 border border-white/20 text-white font-bold py-3 px-8 rounded-2xl hover:bg-white/20 transition-all">
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
 
-            <button type="submit" className="btn-primary w-full shadow-xl">
-              Save All Changes
-            </button>
-          </form>
         </div>
       </div>
     </div>
