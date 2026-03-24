@@ -36,6 +36,7 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [formData, setFormData] = useState({
     email: '', password: '', confirmPassword: '',
     firstName: '', lastName: '', mobile: '', govtId: '',
@@ -209,11 +210,25 @@ const Auth = () => {
               <InputField icon={Phone} label="Mobile Number" name="mobile" type="tel" value={formData.mobile} onChange={handleChange} placeholder="+91 98765 43210" required />
               <InputField icon={CreditCard} label="Govt. ID Number" name="govtId" value={formData.govtId} onChange={handleChange} placeholder="Aadhaar / PAN / Passport" required />
 
+              {/* Privacy Policy Agreement */}
+              <label className="flex items-start space-x-3 bg-white/5 border border-white/10 p-3 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={agreePrivacy} 
+                  onChange={(e) => setAgreePrivacy(e.target.checked)} 
+                  className="mt-1 w-4 h-4 rounded border-white/30 text-pink-500 focus:ring-pink-500/50 bg-white/10"
+                  required
+                />
+                <span className="text-xs text-white/70 leading-snug">
+                  I agree to the <Link to="/privacy" className="text-white font-bold hover:underline" target="_blank">Privacy Policy</Link> and Terms of Service.
+                </span>
+              </label>
+
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setSignupStep(1)} className="flex items-center justify-center space-x-1 bg-white/10 border border-white/20 text-white font-bold py-3.5 px-5 rounded-2xl hover:bg-white/20 transition-all">
                   <ArrowLeft size={18} />
                 </button>
-                <button type="submit" disabled={loading || !formData.firstName || !formData.mobile || !formData.govtId}
+                <button type="submit" disabled={loading || !formData.firstName || !formData.mobile || !formData.govtId || !agreePrivacy}
                   className="flex-1 bg-gradient-to-r from-pink-500 to-violet-600 text-white font-bold py-3.5 rounded-2xl hover:shadow-lg hover:shadow-pink-500/30 hover:scale-[1.02] transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
                   {loading ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                     : <><span>Create Account</span><Sparkles size={16} /></>}
