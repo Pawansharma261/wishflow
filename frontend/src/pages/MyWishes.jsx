@@ -7,6 +7,7 @@ const MyWishes = () => {
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [wishToDelete, setWishToDelete] = useState(null); // ID of the wish selected for deletion
 
   useEffect(() => {
     fetchWishes();
@@ -24,16 +25,22 @@ const MyWishes = () => {
     setLoading(false);
   };
 
-  const deleteWish = async (id) => {
-    if (window.confirm('Delete this scheduled wish?')) {
-      const { error } = await supabase.from('wishes').delete().eq('id', id);
-      if (error) {
-        console.error('Failed to delete wish', error);
-        alert('Failed to delete wish.');
-      } else {
-        fetchWishes();
-      }
+  const deleteWish = (id) => {
+    setWishToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!wishToDelete) return;
+    
+    // Optimistic UI update could go here, but we'll wait for DB sync
+    const { error } = await supabase.from('wishes').delete().eq('id', wishToDelete);
+    if (error) {
+      console.error('Failed to delete wish', error);
+      alert('Failed to delete wish.');
+    } else {
+      fetchWishes();
     }
+    setWishToDelete(null);
   };
 
   const filteredWishes = filter === 'all' ? wishes : wishes.filter(w => w.status === filter);
@@ -129,6 +136,23 @@ const MyWishes = () => {
           )}
         </div>
       </div>
+
+      {/* Modern React Confirmation Modal (Bypasses Native Mobile blocks) */}
+      {wishToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-scale-in">
+             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} />
+             </div>
+             <h3 className="text-2xl font-black text-center mb-2">Delete Wish?</h3>
+             <p className="text-slate-500 text-center mb-8 font-medium">This action cannot be undone. The scheduled wish will be permanently removed.</p>
+             <div className="flex space-x-4">
+                <button onClick={() => setWishToDelete(null)} className="flex-1 py-3 rounded-xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
+                <button onClick={confirmDelete} className="flex-1 py-3 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all">Delete</button>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
