@@ -1,6 +1,7 @@
-const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, Browsers, fetchLatestBaileysVersion, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const useRedisAuthState = require('./useRedisAuthState');
+const path = require('path');
+const fs = require('fs');
 
 // Keep connected sessions in memory for quick messaging (avoids reconnecting every message)
 // If server restarts, they will be lazy-loaded on the next message
@@ -14,7 +15,8 @@ const sessions = new Map();
 const connectWhatsApp = async (userId, io) => {
   console.log(`[WhatsApp] Connecting for user ${userId}...`);
   try {
-    const { state, saveCreds, clearState } = await useRedisAuthState(userId);
+    const authFolder = `/tmp/wa_auth_${userId}`;
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`[WhatsApp] Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
@@ -23,7 +25,7 @@ const connectWhatsApp = async (userId, io) => {
       auth: state,
       printQRInTerminal: false,
       browser: Browsers.macOS('Desktop'),
-      logger: pino({ level: 'warn' }), // Changed from silent to warn to debug any silent failures
+      logger: pino({ level: 'silent' }), // Switched back to silent
       generateHighQualityLinkPreview: true,
       syncFullHistory: false
     });
@@ -57,7 +59,9 @@ const connectWhatsApp = async (userId, io) => {
         } else {
           console.log(`[WhatsApp] Connection closed for ${userId}, logged out.`);
           sessions.delete(userId);
-          await clearState();
+          if (fs.existsSync(authFolder)) {
+            fs.rmSync(authFolder, { recursive: true, force: true });
+          }
         }
       } else if (connection === 'open') {
         console.log(`[WhatsApp] Opened connection for ${userId}`);

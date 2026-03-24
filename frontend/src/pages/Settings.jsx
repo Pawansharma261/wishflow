@@ -35,6 +35,29 @@ const Settings = () => {
     
     // Initialize WebSockets
     initSocket(user.id);
+
+    // Instagram OAuth Callback Processing
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      handleInstagramCallback(code, user.id);
+    }
+  };
+
+  const handleInstagramCallback = async (code, uid) => {
+    try {
+      const res = await apiClient.post('/api/integrations/instagram/callback', { code, userId: uid });
+      if (res.error) throw new Error(res.error);
+      
+      alert('Instagram Professional Account fully connected! ✨');
+      setProfile(p => ({ ...p, instagram_connected: true }));
+      
+      // Clean up the URL parameter without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to securely link Instagram account. Ensure your Meta credentials are correct.');
+    }
   };
 
   const initSocket = (uid) => {
