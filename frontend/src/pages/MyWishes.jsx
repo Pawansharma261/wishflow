@@ -25,9 +25,14 @@ const MyWishes = () => {
   };
 
   const deleteWish = async (id) => {
-    if (confirm('Delete this scheduled wish?')) {
-      await supabase.from('wishes').delete().eq('id', id);
-      fetchWishes();
+    if (window.confirm('Delete this scheduled wish?')) {
+      const { error } = await supabase.from('wishes').delete().eq('id', id);
+      if (error) {
+        console.error('Failed to delete wish', error);
+        alert('Failed to delete wish.');
+      } else {
+        fetchWishes();
+      }
     }
   };
 
@@ -52,13 +57,13 @@ const MyWishes = () => {
   return (
     <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-        <h1 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">Timeline</h1>
-        <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+        <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight">Timeline</h1>
+        <div className="flex bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/20">
           {['all', 'pending', 'sent'].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${filter === f ? 'bg-white shadow-md text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${filter === f ? 'bg-white shadow-xl text-slate-900' : 'text-white/60 hover:text-white'}`}
             >
               <span className="capitalize">{f}</span>
             </button>
@@ -79,9 +84,9 @@ const MyWishes = () => {
                 <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {filteredWishes.map((wish) => (
-                <tr key={wish.id} className="hover:bg-slate-50/50 transition-colors group">
+                <tr key={wish.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-8 py-6">
                     <p className="font-bold text-slate-900">{wish.contacts.name}</p>
                   </td>
@@ -108,8 +113,8 @@ const MyWishes = () => {
                     </div>
                   </td>
                   <td className="px-8 py-6 text-right">
-                    <button onClick={() => deleteWish(wish.id)} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                      <Trash2 size={16} />
+                    <button onClick={() => deleteWish(wish.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all" title="Delete Wish">
+                      <Trash2 size={18} />
                     </button>
                   </td>
                 </tr>
