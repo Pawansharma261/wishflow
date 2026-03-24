@@ -60,8 +60,13 @@ const Scheduler = () => {
 
   const handleSubmit = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    
+    // Ensure the datetime is specifically converted from local browser time to a UTC ISO string for accurate background cron execution
+    const utcScheduledDate = new Date(formData.scheduled_datetime).toISOString();
+
     const { error } = await supabase.from('wishes').insert({
       ...formData,
+      scheduled_datetime: utcScheduledDate,
       user_id: user.id
     });
     
