@@ -5,7 +5,7 @@ import { User, Bell, Shield, Instagram, Phone, Key, HelpCircle, Loader, CheckCir
 import { io } from 'socket.io-client';
 import QRCode from 'qrcode';
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
 
 const Settings = () => {
   const [profile, setProfile] = useState({ name: '', email: '', whatsapp_connected: false, instagram_connected: false });
@@ -40,7 +40,10 @@ const Settings = () => {
   const initSocket = (uid) => {
     if (socketRef.current) return;
     
-    const socket = io(SOCKET_URL);
+    // Pass standard polling/websocket config for better compatibility
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling']
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -77,7 +80,8 @@ const Settings = () => {
     setWaLoading(true);
     setWaStatus('connecting');
     try {
-      await apiClient.post('/integrations/whatsapp/connect', { userId });
+      const res = await apiClient.post('/api/integrations/whatsapp/connect', { userId });
+      if (res.error) throw new Error(res.error);
       // The rest is handled by websockets
     } catch (err) {
       alert('Failed to initiate connection. Please try again.');
@@ -88,8 +92,9 @@ const Settings = () => {
 
   const connectInstagram = async () => {
     try {
-      const res = await apiClient.get('/integrations/instagram/oauth');
-      window.location.href = res.data.url;
+      const res = await apiClient.get('/api/integrations/instagram/oauth');
+      if (res.error) throw new Error(res.error);
+      window.location.href = res.url || res.data?.url;
     } catch (err) {
       alert('Failed to get Instagram OAuth URL');
     }
