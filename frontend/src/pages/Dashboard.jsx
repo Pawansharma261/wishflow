@@ -109,24 +109,32 @@ const Dashboard = () => {
       </div>
 
       {/* Integration Status Quick Tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-         <Link to="/settings" className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center space-x-3 hover:bg-white/20 transition-all group">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/40'}`}>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+         <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center space-x-3 transition-all hover:scale-[1.03] active:scale-95 shadow-lg ${
+           profile.whatsapp_connected 
+           ? 'bg-green-600/90 border-green-400/50 shadow-green-900/40' 
+           : 'bg-white/5 border-white/10'
+         }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
                <Send size={18} />
             </div>
             <div>
-               <p className="text-[10px] font-black uppercase tracking-tighter text-white/40">WhatsApp</p>
-               <p className={`text-xs font-bold ${profile.whatsapp_connected ? 'text-white' : 'text-white/30'}`}>{profile.whatsapp_connected ? 'Connected' : 'Offline'}</p>
+               <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.whatsapp_connected ? 'text-white/80' : 'text-white/40'}`}>WhatsApp</p>
+               <p className={`text-xs font-black ${profile.whatsapp_connected ? 'text-white' : 'text-white/60'}`}>{profile.whatsapp_connected ? 'CONNECTED' : 'OFFLINE'}</p>
             </div>
          </Link>
          
-         <Link to="/settings" className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center space-x-3 hover:bg-white/20 transition-all group">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.has_instagram ? 'bg-pink-500/20 text-pink-400' : 'bg-white/10 text-white/40'}`}>
+         <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center space-x-3 transition-all hover:scale-[1.03] active:scale-95 shadow-lg ${
+           profile.has_instagram 
+           ? 'bg-gradient-to-tr from-pink-600 to-purple-600 border-pink-400/50 shadow-pink-900/40' 
+           : 'bg-white/5 border-white/10'
+         }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.has_instagram ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
                <TrendingUp size={18} />
             </div>
             <div>
-               <p className="text-[10px] font-black uppercase tracking-tighter text-white/40">Instagram</p>
-               <p className={`text-xs font-bold ${profile.has_instagram ? 'text-white' : 'text-white/30'}`}>{profile.has_instagram ? 'Connected' : 'Offline'}</p>
+               <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.has_instagram ? 'text-white/80' : 'text-white/40'}`}>Instagram</p>
+               <p className={`text-xs font-black ${profile.has_instagram ? 'text-white' : 'text-white/60'}`}>{profile.has_instagram ? 'CONNECTED' : 'OFFLINE'}</p>
             </div>
          </Link>
       </div>
