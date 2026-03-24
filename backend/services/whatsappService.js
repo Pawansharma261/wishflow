@@ -8,6 +8,17 @@ const supabaseAdmin = require('../db/supabaseAdmin');
 // Keep connected sessions in memory for quick messaging (avoids reconnecting every message)
 // If server restarts, they will be lazy-loaded on the next message
 const sessions = new Map();
+const connecting = new Map(); // Store connection promises to avoid double-init
+
+/**
+ * Get current connection status for a user
+ */
+const getWhatsAppStatus = (userId) => {
+  const sock = sessions.get(userId);
+  if (sock && sock.user) return 'connected';
+  if (connecting.has(userId)) return 'connecting';
+  return 'disconnected';
+};
 
 /**
  * Start or reconnect a WhatsApp session for a specific user
@@ -15,73 +26,85 @@ const sessions = new Map();
  * @param {object} io - The global Socket.io instance
  */
 const connectWhatsApp = async (userId, io) => {
-  console.log(`[WhatsApp] Connecting for user ${userId}...`);
-  try {
-    const { state, saveCreds, clearState } = await useRedisAuthState(userId);
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`[WhatsApp] Using WA v${version.join('.')}, isLatest: ${isLatest}`);
+  // If already connecting, return that promise
+  if (connecting.has(userId)) return connecting.get(userId);
 
-    const sock = makeWASocket({
-      version,
-      auth: state,
-      printQRInTerminal: false,
-      browser: Browsers.macOS('Desktop'),
-      logger: pino({ level: 'silent' }), // Switched back to silent
-      generateHighQualityLinkPreview: true,
-      syncFullHistory: false
-    });
+  const connectionPromise = (async () => {
+    console.log(`[WhatsApp] Connecting for user ${userId}...`);
+    try {
+      const { state, saveCreds, clearState } = await useRedisAuthState(userId);
+      const { version, isLatest } = await fetchLatestBaileysVersion();
+      console.log(`[WhatsApp] Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
-    sock.ev.on('creds.update', saveCreds);
+      const sock = makeWASocket({
+        version,
+        auth: state,
+        printQRInTerminal: false,
+        browser: Browsers.macOS('Desktop'),
+        logger: pino({ level: 'silent' }), // Switched back to silent
+        generateHighQualityLinkPreview: true,
+        syncFullHistory: false
+      });
 
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
+      sock.ev.on('creds.update', saveCreds);
 
-      if (qr) {
-        console.log(`[WhatsApp] Generated QR for user ${userId}`);
-        if (io) {
-          io.to(userId).emit('whatsapp_qr', { qr });
-        }
-      }
+      sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-      if (connection === 'close') {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = (statusCode !== DisconnectReason.loggedOut);
-        
-        console.error(`[WhatsApp] Disconnected: `, lastDisconnect?.error);
-        
-        if (io) {
-          io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: shouldReconnect ? 'reconnecting' : 'loggedOut' });
+        if (qr) {
+          console.log(`[WhatsApp] Generated QR for user ${userId}`);
+          if (io) {
+            io.to(userId).emit('whatsapp_status', { status: 'qr_ready' });
+            io.to(userId).emit('whatsapp_qr', { qr });
+          }
         }
 
-        if (shouldReconnect) {
-          console.log(`[WhatsApp] Connection closed for ${userId} (Code: ${statusCode}), reconnecting...`);
-          sessions.delete(userId);
-          setTimeout(() => connectWhatsApp(userId, io), 3000); // Retry after 3 seconds
-        } else {
-          console.log(`[WhatsApp] Connection closed for ${userId}, logged out.`);
-          sessions.delete(userId);
-          await clearState();
-          await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
-        }
-      } else if (connection === 'open') {
-        console.log(`[WhatsApp] Opened connection for ${userId}`);
-        sessions.set(userId, sock); // Store the active session
-        await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
-        if (io) {
-          io.to(userId).emit('whatsapp_status', { status: 'connected' });
-        }
-      }
-    });
+        if (connection === 'close') {
+          const statusCode = lastDisconnect?.error?.output?.statusCode;
+          const shouldReconnect = (statusCode !== DisconnectReason.loggedOut);
+          
+          console.error(`[WhatsApp] Disconnected: `, lastDisconnect?.error);
+          
+          if (io) {
+            io.to(userId).emit('whatsapp_status', { 
+              status: 'disconnected', 
+              reason: shouldReconnect ? 'reconnecting' : 'loggedOut' 
+            });
+          }
 
-    // Handle messages / incoming updates if needed later
-    // sock.ev.on('messages.upsert', async m => { ... })
+          if (shouldReconnect) {
+            console.log(`[WhatsApp] Connection closed for ${userId} (Code: ${statusCode}), reconnecting...`);
+            sessions.delete(userId);
+            connecting.delete(userId);
+            setTimeout(() => connectWhatsApp(userId, io), 5000); // Retry after 5 seconds
+          } else {
+            console.log(`[WhatsApp] Connection closed for ${userId}, logged out.`);
+            sessions.delete(userId);
+            connecting.delete(userId);
+            await clearState();
+            await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
+          }
+        } else if (connection === 'open') {
+          console.log(`[WhatsApp] Opened connection for ${userId}`);
+          sessions.set(userId, sock); // Store the active session
+          await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
+          if (io) {
+            io.to(userId).emit('whatsapp_status', { status: 'connected' });
+          }
+        }
+      });
 
-    return sock;
-  } catch (error) {
-    console.error(`[WhatsApp] Error setting up for ${userId}:`, error.message);
-    if (io) io.to(userId).emit('whatsapp_status', { status: 'error', message: error.message });
-    throw error;
-  }
+      return sock;
+    } catch (error) {
+      console.error(`[WhatsApp] Error setting up for ${userId}:`, error.message);
+      connecting.delete(userId);
+      if (io) io.to(userId).emit('whatsapp_status', { status: 'error', message: error.message });
+      throw error;
+    }
+  })();
+
+  connecting.set(userId, connectionPromise);
+  return connectionPromise;
 };
 
 /**
@@ -150,5 +173,6 @@ const sendWhatsAppWish = async (userId, targetPhone, text) => {
 module.exports = {
   connectWhatsApp,
   sendWhatsAppWish,
+  getWhatsAppStatus,
   sessions
 };

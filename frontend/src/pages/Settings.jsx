@@ -181,6 +181,14 @@ const Settings = () => {
                     <span className="flex items-center space-x-1.5 bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-xs font-bold">
                       <CheckCircle2 size={14} /><span>Connected</span>
                     </span>
+                  ) : waStatus === 'connecting' ? (
+                    <span className="flex items-center space-x-1.5 bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-xs font-bold">
+                      <Loader size={12} className="animate-spin" /><span>Connecting...</span>
+                    </span>
+                  ) : waStatus === 'qr_ready' ? (
+                    <span className="flex items-center space-x-1.5 bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                      <QrCode size={12} /><span>Ready to Scan</span>
+                    </span>
                   ) : (
                     <span className="flex items-center space-x-1.5 bg-white/10 text-white/50 px-3 py-1 rounded-full text-xs font-bold">
                       <span className="w-2 h-2 rounded-full bg-white/30" /><span>Disconnected</span>
@@ -248,8 +256,9 @@ const Settings = () => {
                     onClick={connectInstagram}
                     className="w-full bg-gradient-to-r from-pink-500 to-violet-600 text-white font-bold py-3.5 rounded-2xl hover:scale-[1.02] transition-all shadow-lg shadow-pink-900/50 text-sm"
                   >
-                    Connect with Facebook
+                    Connect Instagram via Meta
                   </button>
+                  <p className="text-[10px] text-white/20 mt-3 text-center uppercase tracking-widest font-bold">Secure Meta OAuth Login</p>
                 </div>
               </div>
 

@@ -14,14 +14,30 @@ const io = new Server(server, { cors: { origin: '*' } });
 // Make io available globally to routes/services if needed
 app.set('io', io);
 
+const { getWhatsAppStatus, connectWhatsApp } = require('./services/whatsappService');
+const supabaseAdmin = require('./db/supabaseAdmin');
+
 // Handle socket connections
 io.on('connection', (socket) => {
   console.log(`[Socket] Client connected: ${socket.id}`);
   
   // Register user ID when they connect
-  socket.on('register', (userId) => {
+  socket.on('register', async (userId) => {
     console.log(`[Socket] Registered user: ${userId}`);
-    socket.join(userId); // Join a room specifically for this user's notifications
+    socket.join(userId);
+
+    // Auto-resume WhatsApp connection if previously connected according to DB
+    const status = getWhatsAppStatus(userId);
+    if (status === 'disconnected') {
+      const { data } = await supabaseAdmin.from('users').select('whatsapp_connected').eq('id', userId).single();
+      if (data?.whatsapp_connected) {
+        console.log(`[Socket] Auto-resuming WA for user ${userId}`);
+        connectWhatsApp(userId, io).catch(e => console.error('Auto-resume failed:', e.message));
+        socket.emit('whatsapp_status', { status: 'connecting' });
+      }
+    } else {
+      socket.emit('whatsapp_status', { status: status });
+    }
   });
 
   socket.on('disconnect', () => {
