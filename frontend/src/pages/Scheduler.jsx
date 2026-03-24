@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Sparkles, Calendar, MessageSquare, ChevronRight, ChevronLeft, Check, Wand2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import Confetti from 'react-confetti';
 
 const occasions = [
@@ -21,6 +21,7 @@ const Scheduler = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
+  const [profile, setProfile] = useState({ whatsapp_connected: false, instagram_access_token: null });
 
   const [formData, setFormData] = useState({
     contact_id: '',
@@ -33,10 +34,16 @@ const Scheduler = () => {
   });
 
   useEffect(() => {
-    fetchContacts();
+    fetchData();
   }, []);
+  
+  const fetchData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Fetch profile
+    const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
+    if (userData) setProfile(userData);
 
-  const fetchContacts = async () => {
     const { data } = await supabase.from('contacts').select('*');
     if (data) setContacts(data);
     setLoading(false);
@@ -213,21 +220,40 @@ const Scheduler = () => {
               <div>
                 <label className="text-xs font-bold text-slate-400 block mb-3 px-2 uppercase tracking-widest">Notification Channels</label>
                 <div className="flex flex-wrap gap-4">
-                  {['whatsapp', 'instagram', 'push'].map(channel => (
-                    <label key={channel} className="flex items-center space-x-3 bg-slate-50 p-4 rounded-xl cursor-pointer border border-slate-100 hover:border-brand-rose/20 transition-all flex-1 min-w-[120px]">
-                      <input 
-                        type="checkbox" 
-                        checked={formData.channels.includes(channel)}
-                        onChange={(e) => {
-                          const newChannels = e.target.checked 
-                            ? [...formData.channels, channel]
-                            : formData.channels.filter(c => c !== channel);
-                          setFormData({...formData, channels: newChannels});
-                        }}
-                        className="w-5 h-5 accent-brand-rose"
-                      />
-                      <span className="font-bold text-slate-700 capitalize">{channel}</span>
-                    </label>
+                  {[
+                    { id: 'whatsapp', label: 'WhatsApp', connected: profile.whatsapp_connected },
+                    { id: 'instagram', label: 'Instagram', connected: !!profile.instagram_access_token },
+                    { id: 'push', label: 'Push', connected: true } // Push is always 'setup' by browser permission
+                  ].map(ch => (
+                    <div key={ch.id} className="flex-1 min-w-[150px]">
+                      <label className={`flex items-center space-x-3 p-4 rounded-xl cursor-pointer border transition-all ${
+                        formData.channels.includes(ch.id) ? 'bg-slate-50 border-brand-rose/40' : 'bg-white border-slate-100 hover:border-slate-200'
+                      }`}>
+                        <input 
+                          type="checkbox" 
+                          checked={formData.channels.includes(ch.id)}
+                          onChange={(e) => {
+                            const newChannels = e.target.checked 
+                              ? [...formData.channels, ch.id]
+                              : formData.channels.filter(c => c !== ch.id);
+                            setFormData({...formData, channels: newChannels});
+                          }}
+                          className="w-5 h-5 accent-brand-rose"
+                        />
+                        <div>
+                          <p className="font-bold text-slate-700 text-sm">{ch.label}</p>
+                          <div className="flex items-center space-x-1 mt-0.5">
+                            <div className={`w-1.5 h-1.5 rounded-full ${ch.connected ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span className={`text-[9px] font-black uppercase tracking-widest ${ch.connected ? 'text-green-600' : 'text-red-500'}`}>
+                              {ch.connected ? 'Connected' : 'Offline'}
+                            </span>
+                          </div>
+                        </div>
+                      </label>
+                      {!ch.connected && (
+                        <Link to="/settings" className="text-[10px] text-brand-rose font-bold block mt-1 px-1 hover:underline">Connect now →</Link>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

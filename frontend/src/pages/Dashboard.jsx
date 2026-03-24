@@ -19,6 +19,7 @@ const Dashboard = () => {
   const [upcomingWishes, setUpcomingWishes] = useState([]);
   const [radarEvent, setRadarEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState({ whatsapp_connected: false, has_instagram: false });
 
   useEffect(() => {
     fetchDashboardData();
@@ -27,6 +28,15 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     
+    // Fetch profile status
+    const { data: userData } = await supabase.from('users').select('whatsapp_connected, instagram_access_token').eq('id', user.id).single();
+    if (userData) {
+      setProfile({
+        whatsapp_connected: userData.whatsapp_connected,
+        has_instagram: !!userData.instagram_access_token
+      });
+    }
+
     const { count: contactsCount } = await supabase
       .from('contacts')
       .select('*', { count: 'exact', head: true })
@@ -85,7 +95,7 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-10">
         <div>
           <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight mb-2">
             Hey there! 👋
@@ -96,6 +106,29 @@ const Dashboard = () => {
           <Sparkles size={18} />
           <span>Automate New Wish</span>
         </Link>
+      </div>
+
+      {/* Integration Status Quick Tiles */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+         <Link to="/settings" className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center space-x-3 hover:bg-white/20 transition-all group">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/40'}`}>
+               <Send size={18} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-tighter text-white/40">WhatsApp</p>
+               <p className={`text-xs font-bold ${profile.whatsapp_connected ? 'text-white' : 'text-white/30'}`}>{profile.whatsapp_connected ? 'Connected' : 'Offline'}</p>
+            </div>
+         </Link>
+         
+         <Link to="/settings" className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center space-x-3 hover:bg-white/20 transition-all group">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.has_instagram ? 'bg-pink-500/20 text-pink-400' : 'bg-white/10 text-white/40'}`}>
+               <TrendingUp size={18} />
+            </div>
+            <div>
+               <p className="text-[10px] font-black uppercase tracking-tighter text-white/40">Instagram</p>
+               <p className={`text-xs font-bold ${profile.has_instagram ? 'text-white' : 'text-white/30'}`}>{profile.has_instagram ? 'Connected' : 'Offline'}</p>
+            </div>
+         </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
