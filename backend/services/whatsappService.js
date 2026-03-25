@@ -38,6 +38,11 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   const connectionPromise = (async () => {
     console.log(`[WhatsApp] Pairing via phone number for user ${userId}: ${phoneNumber}`);
     try {
+      // FORCE clear any existing corrupt state before generating a new pair code
+      let authObj = await useRedisAuthState(userId);
+      await authObj.clearState();
+      
+      // Get fresh state
       const { state, saveCreds, clearState } = await useRedisAuthState(userId);
       const { version, isLatest } = await fetchLatestBaileysVersion();
 
@@ -53,21 +58,13 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
 
       sock.ev.on('creds.update', saveCreds);
 
-      // Request the pairing code ONCE after socket is created
-      // Baileys requires the socket to NOT have an existing session (pre-key state)
-      let pairingRequested = false;
-
-      sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, isOnline } = update;
-
-        // Request pairing code as soon as we know the socket is ready but NOT yet connected
-        if (!pairingRequested && !sock.authState.creds.registered) {
-          pairingRequested = true;
+      // Request pairing code outside of connection.update event loops
+      if (!sock.authState.creds.registered) {
+        setTimeout(async () => {
           try {
-            // Clean phone: remove +, spaces, dashes
             const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
             const code = await sock.requestPairingCode(cleanPhone);
-            const formatted = code?.match(/.{1,4}/g)?.join('-') || code; // Format as XXXX-XXXX
+            const formatted = code?.match(/.{1,4}/g)?.join('-') || code; 
             console.log(`[WhatsApp] Pairing code for ${userId}: ${formatted}`);
             if (io) {
               io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
@@ -77,7 +74,11 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
             console.error(`[WhatsApp] Failed to get pairing code:`, codeErr.message);
             if (io) io.to(userId).emit('whatsapp_status', { status: 'error', message: 'Could not generate pairing code. Try again.' });
           }
-        }
+        }, 2500); // Give Baileys 2.5s to initialize before requesting code
+      }
+
+      sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update;
 
         if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode;

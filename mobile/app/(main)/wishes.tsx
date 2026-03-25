@@ -24,11 +24,18 @@ export default function Wishes() {
   useEffect(() => { fetchWishes(); }, []);
 
   const fetchWishes = async () => {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase.from('wishes').select('*, contacts(name)').eq('user_id', user.id).order('scheduled_datetime', { ascending: false });
-    if (data) setWishes(data);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase.from('wishes').select('*, contacts(name)').eq('user_id', user.id).order('scheduled_datetime', { ascending: false });
+      if (error) throw error;
+      if (data) setWishes(data);
+    } catch (err) {
+      console.warn('Error fetching wishes:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = (id: string) => {

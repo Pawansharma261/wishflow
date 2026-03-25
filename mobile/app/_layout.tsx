@@ -1,8 +1,9 @@
-import { Stack } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../src/lib/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 import { View, ActivityIndicator, Text } from 'react-native';
+import { Sparkles } from 'lucide-react-native';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -14,6 +15,7 @@ const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://wishflow-bac
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const segments = useSegments();
 
   // Challenge 1: Deep Link Handler — processes "wishflow://..." callbacks
   const handleDeepLink = useCallback(async (url: string) => {
@@ -49,6 +51,9 @@ export default function RootLayout() {
     // Auth state listener
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+    }).catch(err => {
+      console.warn('Session fetch failed:', err);
+    }).finally(() => {
       setLoading(false);
     });
 
@@ -62,20 +67,35 @@ export default function RootLayout() {
     };
   }, [handleDeepLink]);
 
+  // Handle protected routing
+  useEffect(() => {
+    if (loading) return;
+
+    const inAuthGroup = segments[0] === 'auth';
+
+    if (!session && !inAuthGroup) {
+      // Redirect to Auth screen if not logged in
+      router.replace('/auth');
+    } else if (session && inAuthGroup) {
+      // Redirect to main app if logged in but on Auth screen
+      router.replace('/');
+    }
+  }, [loading, session, segments]);
+
   if (loading) return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f0c29' }}>
+      <View style={{ width: 80, height: 80, borderRadius: 24, backgroundColor: 'rgba(236,72,153,0.15)', justifyContent: 'center', alignItems: 'center', marginBottom: 24 }}>
+        <Sparkles size={40} color="#ec4899" />
+      </View>
+      <Text style={{ fontSize: 32, fontWeight: '900', color: '#ffffff', letterSpacing: -1, marginBottom: 12 }}>WishFlow</Text>
       <ActivityIndicator size="large" color="#ec4899" />
-      <Text style={{ color: 'rgba(255,255,255,0.4)', marginTop: 16, fontWeight: '700' }}>Loading WishFlow...</Text>
     </View>
   );
 
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-      {session ? (
-        <Stack.Screen name="(main)" />
-      ) : (
-        <Stack.Screen name="auth" />
-      )}
+      <Stack.Screen name="(main)" />
+      <Stack.Screen name="auth" />
     </Stack>
   );
 }

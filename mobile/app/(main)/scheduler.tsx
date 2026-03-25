@@ -40,13 +40,21 @@ export default function Scheduler() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLoading(false); return; }
-    const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
-    if (userData) setProfile(userData);
-    const { data: contactsData } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
-    if (contactsData) setContactsList(contactsData);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
+      if (userData) setProfile(userData);
+      
+      const { data: contactsData } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
+      if (contactsData) setContactsList(contactsData);
+    } catch (err) {
+      console.warn('Error fetching scheduler data:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePickPhoneContact = async () => {

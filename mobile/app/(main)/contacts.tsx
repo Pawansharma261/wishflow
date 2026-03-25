@@ -22,11 +22,18 @@ export default function Contacts() {
   useEffect(() => { fetchContacts(); }, []);
 
   const fetchContacts = async () => {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
-    if (data) setContacts(data);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
+      if (error) throw error;
+      if (data) setContacts(data);
+    } catch (err) {
+      console.warn('Error fetching contacts:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEdit = (contact: any) => {

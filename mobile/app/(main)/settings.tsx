@@ -46,16 +46,26 @@ export default function Settings() {
   }, []);
 
   const fetchProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    setUserId(user.id);
-    const { data } = await supabase.from('users').select('*').eq('id', user.id).single();
-    if (data) {
-      setProfile({ ...data, email: user.email });
-      if (data.whatsapp_connected) setWaStatus('connected');
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
+      
+      const { data, error } = await supabase.from('users').select('*').eq('id', user.id).single();
+      if (error) {
+         console.warn("Profile fetch error:", error.message);
+      }
+      if (data) {
+        setProfile({ ...data, email: user.email });
+        if (data.whatsapp_connected) setWaStatus('connected');
+      }
+      initSocket(user.id);
+    } catch (err) {
+      console.warn('Error fetching profile:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    initSocket(user.id);
   };
 
   const initSocket = (uid: string) => {
