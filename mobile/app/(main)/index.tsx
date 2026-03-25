@@ -29,39 +29,68 @@ export default function Dashboard() {
     fetchDashboardData();
     let socket: any;
     const setupSocket = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      socket = io(BACKEND_URL, { transports: ['websocket', 'polling'] });
-      socket.on('connect', () => socket.emit('register', user.id));
-      socket.on('whatsapp_status', (data: any) => {
-        setProfile(prev => ({ ...prev, whatsapp_connected: data.status === 'connected' }));
-      });
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        socket = io(BACKEND_URL, { transports: ['websocket', 'polling'] });
+        socket.on('connect', () => socket.emit('register', user.id));
+        socket.on('whatsapp_status', (data: any) => {
+          setProfile(prev => ({ ...prev, whatsapp_connected: data.status === 'connected' }));
+        });
+      } catch (err) {
+        console.warn('Socket connection error:', err);
+      }
     };
     setupSocket();
     return () => { if (socket) socket.disconnect(); };
   }, []);
 
   const fetchDashboardData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
-    if (userData) setProfile({ whatsapp_connected: userData.whatsapp_connected, has_instagram: !!userData.instagram_access_token });
-    const { count: contactsCount } = await supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
-    const { data: wishes } = await supabase.from('wishes').select('*, contacts(name)').eq('user_id', user.id);
-    const sent = wishes?.filter((w: any) => w.status === 'sent').length || 0;
-    const pending = wishes?.filter((w: any) => w.status === 'pending').length || 0;
-    setStats({ totalContacts: contactsCount || 0, sentWishes: sent, pendingWishes: pending });
-    const upcoming = wishes?.filter((w: any) => w.status === 'pending').sort((a: any, b: any) => new Date(a.scheduled_datetime).getTime() - new Date(b.scheduled_datetime).getTime()).slice(0, 3) || [];
-    setUpcomingWishes(upcoming);
-    const { data: contacts } = await supabase.from('contacts').select('name, birthday, anniversary').eq('user_id', user.id);
-    let soonestEvent = null; let soonestDays = Infinity;
-    for (const c of (contacts || [])) {
-      const bday = getNextOccurrence(c.birthday); const anni = getNextOccurrence(c.anniversary);
-      if (bday) { const diff = differenceInDays(bday, new Date()); if (diff < soonestDays) { soonestDays = diff; soonestEvent = { name: c.name, date: bday, type: 'Birthday 🎂' }; } }
-      if (anni) { const diff = differenceInDays(anni, new Date()); if (diff < soonestDays) { soonestDays = diff; soonestEvent = { name: c.name, date: anni, type: 'Anniversary 💍' }; } }
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // Safe fetch user data. .single() can throw if no rows.
+      try {
+        const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
+        if (userData) {
+          setProfile({ whatsapp_connected: userData.whatsapp_connected, has_instagram: !!userData.instagram_access_token });
+        }
+      } catch (userErr) {
+        console.warn('User profile not created yet.', userErr);
+      }
+
+      const { count: contactsCount } = await supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+      
+      const { data: wishes } = await supabase.from('wishes').select('*, contacts(name)').eq('user_id', user.id);
+      const sent = wishes?.filter((w: any) => w.status === 'sent').length || 0;
+      const pending = wishes?.filter((w: any) => w.status === 'pending').length || 0;
+      setStats({ totalContacts: contactsCount || 0, sentWishes: sent, pendingWishes: pending });
+      
+      const upcoming = wishes?.filter((w: any) => w.status === 'pending')
+        .sort((a: any, b: any) => new Date(a.scheduled_datetime).getTime() - new Date(b.scheduled_datetime).getTime())
+        .slice(0, 3) || [];
+      setUpcomingWishes(upcoming);
+      
+      const { data: contacts } = await supabase.from('contacts').select('name, birthday, anniversary').eq('user_id', user.id);
+      let soonestEvent = null; let soonestDays = Infinity;
+      for (const c of (contacts || [])) {
+        const bday = getNextOccurrence(c.birthday); const anni = getNextOccurrence(c.anniversary);
+        if (bday) { const diff = differenceInDays(bday, new Date()); if (diff < soonestDays) { soonestDays = diff; soonestEvent = { name: c.name, date: bday, type: 'Birthday 🎂' }; } }
+        if (anni) { const diff = differenceInDays(anni, new Date()); if (diff < soonestDays) { soonestDays = diff; soonestEvent = { name: c.name, date: anni, type: 'Anniversary 💍' }; } }
+      }
+      setRadarEvent(soonestEvent ? { ...soonestEvent, daysAway: soonestDays } : null);
+
+    } catch (e: any) {
+      console.warn('Dashboard Fetch Error:', e);
+    } finally {
+      // Vital: GUARANTEE the loading spinner disappears no matter what happens
+      setLoading(false);
     }
-    setRadarEvent(soonestEvent ? { ...soonestEvent, daysAway: soonestDays } : null);
-    setLoading(false);
   };
 
   const occasionEmoji: Record<string, string> = { birthday: '🎂', christmas: '🎄', diwali: '🪔', valentine: '💝', eid: '🌙', holi: '🌈', new_year: '🎆', custom: '✨' };

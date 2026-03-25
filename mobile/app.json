@@ -20,6 +20,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "WishFlow uses the camera only to help you scan a QR code to link your WhatsApp account for personal celebration wish delivery.",
         "NSPhotoLibraryUsageDescription": "WishFlow may access photos to let you add a personal photo to your celebration wishes.",
+        "NSContactsUsageDescription": "WishFlow uses your contacts to allow you to easily select friends and family to schedule celebration wishes for.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": ["wishflow"]
@@ -49,6 +50,10 @@
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
+      ],
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.READ_CONTACTS"
       ]
     },
     "web": {

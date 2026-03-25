@@ -1,10 +1,11 @@
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
 import { supabase } from '../../src/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, Check, Sparkles, Cloud } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Check, Sparkles, Cloud, Users, PlusCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as Contacts from 'expo-contacts';
 
 const OCCASIONS = [
   { id: 'birthday', name: 'Birthday', emoji: '🎂' },
@@ -20,7 +21,7 @@ const OCCASIONS = [
 export default function Scheduler() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contactsList, setContactsList] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -40,17 +41,65 @@ export default function Scheduler() {
 
   const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
     const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
     if (userData) setProfile(userData);
     const { data: contactsData } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
-    if (contactsData) setContacts(contactsData);
+    if (contactsData) setContactsList(contactsData);
     setLoading(false);
   };
 
-  // Challenge 2 (App Store): Personal, warm message templates
+  const handlePickPhoneContact = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'WishFlow needs access to your contacts to select a friend.');
+        return;
+      }
+
+      // Native contact picker (iOS/Android native UI)
+      const contact = await Contacts.presentContactPickerAsync();
+      if (!contact) return; // User cancelled
+
+      if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) {
+        Alert.alert('No Phone Number', `${contact.name} does not have a phone number saved.`);
+        return;
+      }
+
+      setLoading(true);
+      const phoneNumber = contact.phoneNumbers[0].number;
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      // Create contact in our database
+      const { data: newContact, error } = await supabase.from('contacts').insert({
+        user_id: user.id,
+        name: contact.name,
+        relationship: 'friend', // default
+        phone_number: phoneNumber
+      }).select().single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Update UI List and select them
+      setContactsList(prev => [newContact, ...prev].sort((a,b) => a.name.localeCompare(b.name)));
+      setFormData({ ...formData, contact_id: newContact.id });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not import contact.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const suggestMessage = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); // Challenge 3
-    const contact = contacts.find(c => c.id === formData.contact_id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const contact = contactsList.find(c => c.id === formData.contact_id);
     const name = contact?.name || 'friend';
     const templates: Record<string, string> = {
       birthday: `Happy Birthday, ${name}! 🎂 I hope your day is as wonderful as you are. Sending you love and warm wishes — wishing you a year full of joy and beautiful moments!`,
@@ -68,13 +117,14 @@ export default function Scheduler() {
   const handleSubmit = async () => {
     if (!formData.scheduled_datetime) { Alert.alert('Missing Date', 'Please set a delivery date and time for your wish.'); return; }
     if (!formData.wish_message.trim()) { Alert.alert('Missing Message', 'Please write a personal message for your friend.'); return; }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Challenge 3
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSubmitting(true);
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const utcDate = new Date(formData.scheduled_datetime).toISOString();
     const { error } = await supabase.from('wishes').insert({ ...formData, scheduled_datetime: utcDate, user_id: user.id });
     if (!error) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // Challenge 3
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false); setStep(1);
@@ -87,12 +137,12 @@ export default function Scheduler() {
   };
 
   const goToStep = (nextStep: number) => {
-    Haptics.selectionAsync(); // Challenge 3
+    Haptics.selectionAsync();
     setStep(nextStep);
   };
 
   const toggleChannel = (id: string) => {
-    Haptics.selectionAsync(); // Challenge 3
+    Haptics.selectionAsync();
     setFormData(prev => ({ ...prev, channels: prev.channels.includes(id) ? prev.channels.filter(c => c !== id) : [...prev.channels, id] }));
   };
 
@@ -100,7 +150,6 @@ export default function Scheduler() {
 
   if (loading) return <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0c29', justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color="#ec4899" /></SafeAreaView>;
 
-  // Challenge 5 + Challenge 2: Success screen communicates backend delivery
   if (success) return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0c29', justifyContent: 'center', alignItems: 'center', padding: 30 }}>
       <View style={{ backgroundColor: '#ffffff', borderRadius: 36, padding: 44, alignItems: 'center', width: '100%' }}>
@@ -111,7 +160,6 @@ export default function Scheduler() {
         <Text style={{ color: '#64748b', fontWeight: '600', textAlign: 'center', lineHeight: 22, marginBottom: 20 }}>
           Your personal message is queued on our secure cloud servers. It will be delivered automatically — even if your phone is off.
         </Text>
-        {/* Challenge 5 clarity */}
         <View style={{ backgroundColor: '#f1f5f9', borderRadius: 16, padding: 14, flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <Cloud size={18} color="#6d28d9" />
           <Text style={{ color: '#475569', fontSize: 12, flex: 1 }}>No action needed. Our server handles delivery on time. ✅</Text>
@@ -123,7 +171,6 @@ export default function Scheduler() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0c29' }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        {/* Progress Steps */}
         <View style={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 12 }}>
           <Text style={{ fontSize: 28, fontWeight: '900', color: '#ffffff', marginBottom: 16 }}>Schedule a Wish</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -144,24 +191,33 @@ export default function Scheduler() {
             {/* Step 1: Select Contact */}
             {step === 1 && (
               <View>
-                <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Who are you celebrating?</Text>
-                {/* Challenge 2: App Store friendly copy */}
-                <Text style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600', marginBottom: 20 }}>Pick a friend or family member from your personal contacts.</Text>
-                {contacts.length === 0 ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 30 }}>
-                    <Text style={{ color: 'rgba(255,255,255,0.4)', marginBottom: 16, textAlign: 'center' }}>You have no contacts yet. Add a friend or family member first.</Text>
-                    <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/contacts'); }} style={{ backgroundColor: '#ec4899', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 16 }}>
-                      <Text style={{ color: '#fff', fontWeight: '900' }}>Add a Contact</Text>
-                    </TouchableOpacity>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Who are you celebrating?</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>Pick a friend or family member.</Text>
                   </View>
-                ) : contacts.map(c => (
+                  <TouchableOpacity onPress={handlePickPhoneContact} style={{ width: 50, height: 50, borderRadius: 16, backgroundColor: 'rgba(236,72,153,0.15)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(236,72,153,0.3)' }}>
+                    <PlusCircle size={24} color="#ec4899" />
+                  </TouchableOpacity>
+                </View>
+                
+                <TouchableOpacity onPress={handlePickPhoneContact} style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed', marginBottom: 20 }}>
+                  <Users size={20} color="rgba(255,255,255,0.6)" />
+                  <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 15 }}>Pick from Phone Contacts</Text>
+                </TouchableOpacity>
+
+                {contactsList.length === 0 ? (
+                  <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                    <Text style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>You have no saved contacts yet. Tap the button above to import one.</Text>
+                  </View>
+                ) : contactsList.map(c => (
                   <TouchableOpacity key={c.id} onPress={() => { Haptics.selectionAsync(); setFormData({ ...formData, contact_id: c.id }); }} style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 18, marginBottom: 10, borderWidth: 2, borderColor: formData.contact_id === c.id ? '#ec4899' : 'rgba(255,255,255,0.1)', backgroundColor: formData.contact_id === c.id ? 'rgba(236,72,153,0.1)' : 'transparent' }}>
                     <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
                       <Text style={{ fontSize: 18, fontWeight: '900', color: '#ffffff' }}>{c.name[0]}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontWeight: '800', color: '#ffffff', fontSize: 15 }}>{c.name}</Text>
-                      <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }}>{c.relationship}</Text>
+                      {c.phone_number && <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '600', marginTop: 3 }}>{c.phone_number}</Text>}
                     </View>
                     {formData.contact_id === c.id && <Check size={20} color="#ec4899" />}
                   </TouchableOpacity>
@@ -185,12 +241,11 @@ export default function Scheduler() {
               </View>
             )}
 
-            {/* Step 3: Personal Message */}
+            {/* Step 3: Message */}
             {step === 3 && (
               <View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                   <View>
-                    {/* Challenge 2: Emphasize one-on-one personal message */}
                     <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Your Personal Message</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>A heartfelt, individual message just for them.</Text>
                   </View>
@@ -204,13 +259,12 @@ export default function Scheduler() {
               </View>
             )}
 
-            {/* Step 4: Delivery Details + Background note */}
+            {/* Step 4: Delivery */}
             {step === 4 && (
               <View>
                 <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Delivery Details</Text>
                 <Text style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600', marginBottom: 20 }}>When and how should we send it?</Text>
 
-                {/* Challenge 5: Background execution note */}
                 <View style={{ backgroundColor: 'rgba(99,102,241,0.1)', borderRadius: 16, padding: 14, marginBottom: 18, flexDirection: 'row', gap: 10, borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)' }}>
                   <Cloud size={15} color="#818cf8" style={{ marginTop: 1 }} />
                   <Text style={{ flex: 1, color: 'rgba(255,255,255,0.6)', fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
