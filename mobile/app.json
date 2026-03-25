@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "WishFlow",
+    "slug": "wishflow",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "scheme": "wishflow",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#6d28d9"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kptech.wishflow"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#6d28d9"
+      },
+      "package": "com.kptech.wishflow"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "417ea5a1-df77-4987-bb21-3c2e0c51e613"
+      }
+    },
+    "owner": "wishflow"
+  }
+}
