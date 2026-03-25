@@ -13,8 +13,9 @@ const Settings = () => {
 
   // WhatsApp State
   const [waLoading, setWaLoading] = useState(false);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
-  const [waStatus, setWaStatus] = useState('disconnected'); // 'disconnected', 'connecting', 'connected', 'qr_ready'
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
+  const [waStatus, setWaStatus] = useState('disconnected'); // 'disconnected', 'connecting', 'connected', 'pairing_code_ready'
   
   const socketRef = useRef(null);
   const [userId, setUserId] = useState(null);
@@ -79,16 +80,11 @@ const Settings = () => {
       socket.emit('register', uid);
     });
 
-    socket.on('whatsapp_qr', async (data) => {
-      console.log('Received WhatsApp QR');
-      try {
-        const url = await QRCode.toDataURL(data.qr, { margin: 2, scale: 8, color: { dark: '#1e1b4b', light: '#ffffff' } });
-        setQrCodeDataUrl(url);
-        setWaStatus('qr_ready');
-        setWaLoading(false);
-      } catch (err) {
-        console.error('Error rendering QR:', err);
-      }
+    socket.on('whatsapp_pairing_code', (data) => {
+      console.log('Received WhatsApp Pairing Code');
+      setPairingCode(data.code);
+      setWaStatus('pairing_code_ready');
+      setWaLoading(false);
     });
 
     socket.on('whatsapp_status', (data) => {
@@ -97,7 +93,7 @@ const Settings = () => {
       if (data.status === 'connected') {
         setProfile(p => ({ ...p, whatsapp_connected: true }));
         setWaLoading(false);
-        setQrCodeDataUrl('');
+        setPairingCode('');
       } else if (data.status === 'disconnected') {
         setProfile(p => ({ ...p, whatsapp_connected: false }));
       }
@@ -105,10 +101,14 @@ const Settings = () => {
   };
 
   const connectWhatsApp = async () => {
+    if (!phoneNumber.trim()) {
+      alert("Please enter a WhatsApp phone number.");
+      return;
+    }
     setWaLoading(true);
     setWaStatus('connecting');
     try {
-      const res = await apiClient.post('/api/integrations/whatsapp/connect', { userId });
+      const res = await apiClient.post('/api/integrations/whatsapp/pair-phone', { userId, phoneNumber });
       if (res.error) throw new Error(res.error);
       // The rest is handled by websockets
     } catch (err) {
@@ -185,9 +185,9 @@ const Settings = () => {
                     <span className="flex items-center space-x-1.5 bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-xs font-bold">
                       <Loader size={12} className="animate-spin" /><span>Connecting...</span>
                     </span>
-                  ) : waStatus === 'qr_ready' ? (
+                  ) : waStatus === 'pairing_code_ready' ? (
                     <span className="flex items-center space-x-1.5 bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
-                      <QrCode size={12} /><span>Ready to Scan</span>
+                      <QrCode size={12} /><span>Ready to Link</span>
                     </span>
                   ) : (
                     <span className="flex items-center space-x-1.5 bg-white/10 text-white/50 px-3 py-1 rounded-full text-xs font-bold">
@@ -200,26 +200,40 @@ const Settings = () => {
                   Connect your real WhatsApp account to send wishes directly from your phone number. WishFlow acts as a linked companion device.
                 </p>
 
-                <div className="mt-auto relative z-10">
+                <div className="mt-auto relative z-10 w-full">
                   {waStatus === 'connected' ? (
-                    <button onClick={connectWhatsApp} className="w-full bg-white/10 text-white font-bold py-3.5 rounded-2xl hover:bg-white/20 transition-all text-sm border border-white/20">
+                    <button onClick={() => setWaStatus('disconnected')} className="w-full bg-white/10 text-white font-bold py-3.5 rounded-2xl hover:bg-white/20 transition-all text-sm border border-white/20">
                       Reconnect Device
                     </button>
-                  ) : waStatus === 'qr_ready' && qrCodeDataUrl ? (
-                    <div className="flex flex-col items-center p-4 bg-white rounded-2xl">
-                      <img src={qrCodeDataUrl} alt="WhatsApp QR Code" className="w-48 h-48 mb-3" />
-                      <p className="text-slate-800 font-bold text-sm text-center">Scan with WhatsApp</p>
-                      <p className="text-slate-500 text-xs text-center mt-1">Linked Devices → Link a Device</p>
+                  ) : waStatus === 'pairing_code_ready' && pairingCode ? (
+                    <div className="flex flex-col items-center p-6 bg-white rounded-2xl w-full">
+                      <h4 className="text-slate-800 font-black text-lg mb-4">Link with Phone Number</h4>
+                      <div className="bg-slate-100 px-6 py-4 rounded-xl w-full text-center mb-4">
+                        <span className="text-3xl font-black text-slate-800 tracking-widest">{pairingCode}</span>
+                      </div>
+                      <p className="text-slate-600 text-sm font-medium mb-1">1. Open WhatsApp</p>
+                      <p className="text-slate-600 text-sm font-medium mb-1">2. Menu (⋮) → Linked Devices</p>
+                      <p className="text-slate-600 text-sm font-medium mb-1">3. Link a Device → <span className="text-brand-rose">Link with Phone Number</span></p>
+                      <p className="text-slate-600 text-sm font-medium">4. Enter the code above</p>
                     </div>
                   ) : (
-                    <button 
-                      onClick={connectWhatsApp} 
-                      disabled={waLoading}
-                      className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-green-900/50 flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
-                    >
-                      {waLoading ? <Loader size={18} className="animate-spin" /> : <QrCode size={18} />}
-                      <span>{waLoading ? 'Generating QR...' : 'Generate Connection QR'}</span>
-                    </button>
+                    <div className="space-y-4 w-full">
+                      <input 
+                        type="text" 
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="w-full bg-white/5 border border-white/20 rounded-2xl px-4 py-3.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-medium" 
+                      />
+                      <button 
+                        onClick={connectWhatsApp} 
+                        disabled={waLoading}
+                        className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 rounded-2xl transition-all shadow-lg shadow-green-900/50 flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
+                      >
+                        {waLoading ? <Loader size={18} className="animate-spin" /> : <Phone size={18} />}
+                        <span>{waLoading ? 'Generating Code...' : 'Get Pairing Code'}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

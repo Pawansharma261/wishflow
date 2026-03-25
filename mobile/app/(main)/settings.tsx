@@ -2,52 +2,16 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, TextInput,
 import { supabase } from '../../src/lib/supabaseClient';
 import { useEffect, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LogOut, CheckCircle2, Phone, Instagram, User, QrCode, Wifi, WifiOff, Info, X, Smartphone, Server, Cloud } from 'lucide-react-native';
+import { LogOut, CheckCircle2, Phone, Instagram, User, Wifi, WifiOff, Info, X, Smartphone, Server, Cloud, Copy } from 'lucide-react-native';
 import { io } from 'socket.io-client';
 import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
 
-// Challenge 4 Helper: Instructions Modal for WhatsApp QR on phone
-function WhatsAppGuideModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  return (
-    <Modal visible={visible} transparent animationType="slide" presentationStyle="overFullScreen">
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' }}>
-        <View style={{ backgroundColor: '#1a1740', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 28, paddingBottom: 44 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '900' }}>How to Link WhatsApp</Text>
-            <TouchableOpacity onPress={onClose} style={{ padding: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12 }}><X size={18} color="rgba(255,255,255,0.6)" /></TouchableOpacity>
-          </View>
-          <View style={{ gap: 20 }}>
-            {[
-              { step: '1', icon: <Smartphone size={20} color="#ec4899" />, title: 'Tap "Generate QR"', desc: 'Tap the button below. WishFlow will generate a secure QR code on screen.' },
-              { step: '2', icon: <QrCode size={20} color="#f97316" />, title: 'Use a Second Screen', desc: 'Open WhatsApp on your phone → Tap the 3 dots (⋮) → "Linked Devices" → "Link a Device".' },
-              { step: '3', icon: <CheckCircle2 size={20} color="#22c55e" />, title: 'Scan the QR Code', desc: 'Point your phone camera at the QR code shown here (or open this app on a tablet/use your laptop\'s Expo app preview).' },
-              { step: '4', icon: <Server size={20} color="#818cf8" />, title: 'WishFlow is a Companion', desc: 'Your phone sends wishes. You don\'t need the app open — our servers handle the scheduling automatically.' },
-            ].map(item => (
-              <View key={item.step} style={{ flexDirection: 'row', gap: 14, alignItems: 'flex-start' }}>
-                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.06)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                  {item.icon}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 14, marginBottom: 3 }}>{item.title}</Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, lineHeight: 19 }}>{item.desc}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-          <TouchableOpacity onPress={onClose} style={{ backgroundColor: '#ec4899', borderRadius: 20, paddingVertical: 14, alignItems: 'center', marginTop: 24 }}>
-            <Text style={{ color: '#ffffff', fontWeight: '900', fontSize: 15 }}>Got It!</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// Challenge 5: Background Execution Info Banner
+// Background Execution Info Banner
 function BackgroundBanner() {
   return (
     <View style={{ backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 20, padding: 16, flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderWidth: 1, borderColor: 'rgba(99,102,241,0.25)', marginBottom: 18 }}>
@@ -66,13 +30,15 @@ export default function Settings() {
   const router = useRouter();
   const [profile, setProfile] = useState<any>({ name: '', email: '', whatsapp_connected: false, instagram_access_token: null });
   const [loading, setLoading] = useState(true);
-  const [waStatus, setWaStatus] = useState('disconnected');
-  const [qrDataUrl, setQrDataUrl] = useState('');
-  const [waLoading, setWaLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showWaGuide, setShowWaGuide] = useState(false); // Challenge 4
   const socketRef = useRef<any>(null);
+
+  // WhatsApp Phone Pairing State
+  const [waStatus, setWaStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'pairing_code_ready' | 'connected'
+  const [waLoading, setWaLoading] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
 
   useEffect(() => {
     fetchProfile();
@@ -97,57 +63,61 @@ export default function Settings() {
     const socket = io(BACKEND_URL, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
     socket.on('connect', () => socket.emit('register', uid));
-    socket.on('whatsapp_qr', (data: any) => {
-      setQrDataUrl(data.qr);
-      setWaStatus('qr_ready');
+    
+    // Listen for the pairing code instead of QR
+    socket.on('whatsapp_pairing_code', (data: any) => {
+      setPairingCode(data.code);
+      setWaStatus('pairing_code_ready');
       setWaLoading(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // Challenge 3
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     });
+
     socket.on('whatsapp_status', (data: any) => {
       setWaStatus(data.status);
       if (data.status === 'connected') {
         setProfile((p: any) => ({ ...p, whatsapp_connected: true }));
         setWaLoading(false);
-        setQrDataUrl('');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // Challenge 3
+        setPairingCode('');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else if (data.status === 'disconnected') {
         setProfile((p: any) => ({ ...p, whatsapp_connected: false }));
       }
     });
   };
 
-  const connectWhatsApp = async () => {
+  const requestPairingCode = async () => {
     if (!userId) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Challenge 3
+    if (!phoneNumber.trim()) {
+      Alert.alert('Missing Info', 'Please enter your WhatsApp phone number.');
+      return;
+    }
+    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setWaLoading(true);
     setWaStatus('connecting');
     try {
-      const response = await fetch(`${BACKEND_URL}/api/integrations/whatsapp/connect`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+      const response = await fetch(`${BACKEND_URL}/api/integrations/whatsapp/pair-phone`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, phoneNumber }),
       });
       if (!response.ok) throw new Error('Failed');
     } catch {
-      Alert.alert('Connection Error', 'Failed to initiate WhatsApp connection. Please check your network and try again.');
+      Alert.alert('Connection Error', 'Failed to request pairing code. Please check your network and try again.');
       setWaLoading(false);
       setWaStatus('disconnected');
     }
   };
 
-  // Challenge 1: Full deep-link OAuth flow using expo-web-browser
   const connectInstagram = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Challenge 3
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const response = await fetch(`${BACKEND_URL}/api/integrations/instagram/oauth`);
       const data = await response.json();
       const oauthUrl = data.url || data.data?.url;
       if (!oauthUrl) throw new Error('No OAuth URL');
 
-      // Open in an in-app browser (not leaving the app). When the user finishes,
-      // the browser auto-closes and the deep link in _layout.tsx handles the callback.
       const result = await WebBrowser.openAuthSessionAsync(oauthUrl, 'wishflow://oauth/instagram');
 
       if (result.type === 'success' && result.url) {
-        // Extract code from the redirect URL and call backend
         const parsed = new URL(result.url);
         const code = parsed.searchParams.get('code');
         if (code) {
@@ -156,7 +126,7 @@ export default function Settings() {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, userId: user?.id }),
           });
           setProfile((p: any) => ({ ...p, instagram_access_token: 'active' }));
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // Challenge 3
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Alert.alert('✅ Instagram Connected!', 'Your Instagram account is now linked for sending personal celebration messages.');
         }
       }
@@ -167,16 +137,16 @@ export default function Settings() {
 
   const handleSaveName = async () => {
     if (!userId || !profile.name?.trim()) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); // Challenge 3
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSaving(true);
     await supabase.from('users').upsert({ id: userId, name: profile.name });
     setSaving(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // Challenge 3
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert('Saved!', 'Your name has been updated.');
   };
 
   const handleLogout = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); // Challenge 3
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log Out', style: 'destructive', onPress: () => supabase.auth.signOut() }
@@ -190,16 +160,12 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f0c29' }}>
-      {/* Challenge 4: WhatsApp Guide Modal */}
-      <WhatsAppGuideModal visible={showWaGuide} onClose={() => setShowWaGuide(false)} />
-
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 50 }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 50 }} keyboardShouldPersistTaps="handled">
         <Text style={{ fontSize: 30, fontWeight: '900', color: '#ffffff', marginBottom: 20 }}>Settings</Text>
 
-        {/* Challenge 5: Background Execution Banner */}
         <BackgroundBanner />
 
-        {/* Account */}
+        {/* Account Info */}
         <View style={sectionStyle}>
           <Text style={{ fontSize: 18, fontWeight: '900', color: '#ffffff', marginBottom: 16 }}>Account</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18, padding: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 18 }}>
@@ -218,74 +184,78 @@ export default function Settings() {
           </TouchableOpacity>
         </View>
 
-        {/* WhatsApp Integration */}
+        {/* WhatsApp Phone Pairing */}
         <View style={sectionStyle}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.15)', justifyContent: 'center', alignItems: 'center' }}>
                 <Phone size={18} color="#22c55e" />
               </View>
               <Text style={{ fontSize: 17, fontWeight: '900', color: '#ffffff' }}>WhatsApp</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {/* Challenge 4: info button opens guide */}
-              <TouchableOpacity onPress={() => setShowWaGuide(true)} style={{ padding: 6, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 10 }}>
-                <Info size={14} color="rgba(255,255,255,0.4)" />
-              </TouchableOpacity>
-              <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: waStatus === 'connected' ? 'rgba(34,197,94,0.15)' : waStatus === 'qr_ready' ? 'rgba(234,179,8,0.15)' : waStatus === 'connecting' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.06)' }}>
-                <Text style={{ color: waStatus === 'connected' ? '#4ade80' : waStatus === 'qr_ready' ? '#fbbf24' : waStatus === 'connecting' ? '#60a5fa' : 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '900', textTransform: 'capitalize' }}>
-                  {waStatus === 'qr_ready' ? 'Scan QR' : waStatus === 'connecting' ? 'Connecting…' : waStatus}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, lineHeight: 20, marginBottom: 16 }}>
-            Link your real WhatsApp account. WishFlow acts as a companion device — it uses your number to send heartfelt personal messages on your behalf.
-          </Text>
-
-          {/* Challenge 4: QR secondary device instructions inline */}
-          {waStatus !== 'connected' && (
-            <View style={{ backgroundColor: 'rgba(234,179,8,0.08)', borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(234,179,8,0.2)', flexDirection: 'row', gap: 10 }}>
-              <Smartphone size={16} color="#fbbf24" style={{ marginTop: 1 }} />
-              <Text style={{ flex: 1, color: 'rgba(234,179,8,0.9)', fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
-                Since your app is on this phone, you'll need a second screen (laptop, PC, or another device) to scan the QR. Tap ⓘ above for step-by-step instructions.
+            <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: waStatus === 'connected' ? 'rgba(34,197,94,0.15)' : waStatus === 'pairing_code_ready' ? 'rgba(234,179,8,0.15)' : waStatus === 'connecting' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.06)' }}>
+              <Text style={{ color: waStatus === 'connected' ? '#4ade80' : waStatus === 'pairing_code_ready' ? '#fbbf24' : waStatus === 'connecting' ? '#60a5fa' : 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '900', textTransform: 'capitalize' }}>
+                {waStatus === 'pairing_code_ready' ? 'Code Ready' : waStatus === 'connecting' ? 'Loading…' : waStatus}
               </Text>
             </View>
-          )}
+          </View>
 
           {waStatus === 'connected' ? (
             <View>
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <CheckCircle2 size={52} color="#22c55e" />
-                <Text style={{ color: '#4ade80', fontWeight: '900', fontSize: 18, marginTop: 10 }}>WhatsApp Ready!</Text>
+                <Text style={{ color: '#4ade80', fontWeight: '900', fontSize: 18, marginTop: 10 }}>WhatsApp Linked!</Text>
                 <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, marginTop: 4, textAlign: 'center' }}>Wishes will be sent from your personal number automatically.</Text>
               </View>
-              <TouchableOpacity onPress={connectWhatsApp} style={{ borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 18, paddingVertical: 13, alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => setWaStatus('disconnected')} style={{ borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 18, paddingVertical: 13, alignItems: 'center' }}>
                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontWeight: '800' }}>Reconnect Device</Text>
               </TouchableOpacity>
             </View>
-          ) : waStatus === 'qr_ready' ? (
-            <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 20, alignItems: 'center' }}>
-              <QrCode size={32} color="#1e1b4b" style={{ marginBottom: 10 }} />
-              <Text style={{ color: '#1e1b4b', fontWeight: '900', fontSize: 16, marginBottom: 4 }}>QR Code Ready</Text>
-              <Text style={{ color: '#475569', fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 12 }}>
-                Open WhatsApp on another device → Menu (⋮) → Linked Devices → Link a Device → scan this screen.
-              </Text>
-              <View style={{ backgroundColor: '#f1f5f9', borderRadius: 14, padding: 14, width: '100%' }}>
-                <Text style={{ color: '#64748b', fontSize: 11, textAlign: 'center', fontFamily: 'monospace' }} numberOfLines={3}>{qrDataUrl?.substring(0, 80)}…</Text>
+          ) : waStatus === 'pairing_code_ready' ? (
+            <View style={{ backgroundColor: '#ffffff', borderRadius: 20, padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: '#1e1b4b', fontWeight: '900', fontSize: 18, marginBottom: 6 }}>Link with Phone Number</Text>
+              
+              {/* The Pairing Code */}
+              <View style={{ backgroundColor: '#f1f5f9', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 24, marginVertical: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ color: '#0f172a', fontWeight: '900', fontSize: 32, letterSpacing: 4 }}>{pairingCode}</Text>
+                <TouchableOpacity onPress={() => { Clipboard.setStringAsync(pairingCode); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} style={{ padding: 8, backgroundColor: '#e2e8f0', borderRadius: 10 }}>
+                  <Copy size={20} color="#475569" />
+                </TouchableOpacity>
               </View>
-              <Text style={{ color: '#94a3b8', fontSize: 11, marginTop: 10 }}>Waiting for scan… (expires in 60s)</Text>
+
+              <View style={{ width: '100%', gap: 10, marginBottom: 8 }}>
+                <Text style={{ color: '#334155', fontWeight: '700', fontSize: 13 }}>1. Open WhatsApp</Text>
+                <Text style={{ color: '#334155', fontWeight: '700', fontSize: 13 }}>2. Tap visually Menu (⋮) or Settings</Text>
+                <Text style={{ color: '#334155', fontWeight: '700', fontSize: 13 }}>3. Tap "Linked Devices" → "Link a Device"</Text>
+                <Text style={{ color: '#334155', fontWeight: '700', fontSize: 13, color: '#ec4899' }}>4. Tap "Link with Phone Number Instead"</Text>
+                <Text style={{ color: '#334155', fontWeight: '700', fontSize: 13 }}>5. Enter the code above ☝️</Text>
+              </View>
             </View>
           ) : (
-            <TouchableOpacity onPress={connectWhatsApp} disabled={waLoading} style={{ backgroundColor: '#16a34a', borderRadius: 18, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, opacity: waLoading ? 0.7 : 1 }}>
-              {waLoading ? <ActivityIndicator size="small" color="#fff" /> : <QrCode size={18} color="#fff" />}
-              <Text style={{ color: '#ffffff', fontWeight: '900', fontSize: 15 }}>{waLoading ? 'Generating QR…' : 'Generate Connection QR'}</Text>
-            </TouchableOpacity>
+            <View>
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, lineHeight: 20, marginBottom: 16 }}>
+                Enter your WhatsApp number. We'll generate a pairing code for you to enter directly in WhatsApp (no QR scanning required).
+              </Text>
+              
+              <Text style={labelStyle}>Your WhatsApp Number (with country code)</Text>
+              <TextInput 
+                value={phoneNumber} 
+                onChangeText={setPhoneNumber} 
+                keyboardType="phone-pad"
+                placeholder="+91 98765 43210" 
+                placeholderTextColor="rgba(255,255,255,0.3)" 
+                style={{ backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, color: '#ffffff', fontWeight: '700', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', marginBottom: 16, fontSize: 16 }} 
+              />
+              
+              <TouchableOpacity onPress={requestPairingCode} disabled={waLoading} style={{ backgroundColor: '#16a34a', borderRadius: 18, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 10, opacity: waLoading ? 0.7 : 1 }}>
+                {waLoading ? <ActivityIndicator size="small" color="#fff" /> : <Smartphone size={18} color="#fff" />}
+                <Text style={{ color: '#ffffff', fontWeight: '900', fontSize: 15 }}>{waLoading ? 'Generating Code…' : 'Get Pairing Code'}</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
-        {/* Instagram Integration — Challenge 1: Real OAuth with WebBrowser */}
+        {/* Instagram Integration */}
         <View style={sectionStyle}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const supabaseAdmin = require('../db/supabaseAdmin');
-const { connectWhatsApp } = require('../services/whatsappService');
+const { connectWhatsApp, connectWhatsAppWithPhone } = require('../services/whatsappService');
 
 // POST /api/integrations/whatsapp/connect
 // Initiates the Baileys connection which will emit QR code to the user's socket room
@@ -20,6 +20,25 @@ router.post('/whatsapp/connect', async (req, res) => {
   } catch (error) {
     console.error('[Integrations] WhatsApp connect error:', error.message);
     res.status(500).json({ error: 'Failed to initiate WhatsApp connection' });
+  }
+});
+
+// POST /api/integrations/whatsapp/pair-phone
+// Initiates a phone-number pairing flow (no QR code needed)
+// Returns a pairing code via WebSocket event: 'whatsapp_pairing_code'
+router.post('/whatsapp/pair-phone', async (req, res) => {
+  const { userId, phoneNumber } = req.body;
+  if (!userId || !phoneNumber) return res.status(400).json({ error: 'userId and phoneNumber are required' });
+
+  const io = req.app.get('io');
+  try {
+    // Clean the phone number (remove all non-digits and leading +)
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    await connectWhatsAppWithPhone(userId, cleanPhone, io);
+    res.json({ success: true, message: 'Pairing initiated. Check your WebSocket for the code.' });
+  } catch (error) {
+    console.error('[Integrations] WhatsApp phone pair error:', error.message);
+    res.status(500).json({ error: 'Failed to initiate phone pairing' });
   }
 });
 

@@ -25,6 +25,93 @@ const getWhatsAppStatus = (userId) => {
  * @param {string} userId - The unique ID of the user
  * @param {object} io - The global Socket.io instance
  */
+/**
+ * Connect WhatsApp using a Phone Number Pairing Code (no QR scan needed)
+ * Baileys generates an 8-character code the user enters in WhatsApp > Linked Devices
+ * @param {string} userId - The unique user ID
+ * @param {string} phoneNumber - E.164 format e.g. "919876543210" (no + sign)
+ * @param {object} io - Global Socket.io instance
+ */
+const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
+  if (connecting.has(userId)) return connecting.get(userId);
+
+  const connectionPromise = (async () => {
+    console.log(`[WhatsApp] Pairing via phone number for user ${userId}: ${phoneNumber}`);
+    try {
+      const { state, saveCreds, clearState } = await useRedisAuthState(userId);
+      const { version, isLatest } = await fetchLatestBaileysVersion();
+
+      const sock = makeWASocket({
+        version,
+        auth: state,
+        printQRInTerminal: false,
+        browser: Browsers.macOS('Desktop'),
+        logger: pino({ level: 'silent' }),
+        generateHighQualityLinkPreview: true,
+        syncFullHistory: false,
+      });
+
+      sock.ev.on('creds.update', saveCreds);
+
+      // Request the pairing code ONCE after socket is created
+      // Baileys requires the socket to NOT have an existing session (pre-key state)
+      let pairingRequested = false;
+
+      sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, isOnline } = update;
+
+        // Request pairing code as soon as we know the socket is ready but NOT yet connected
+        if (!pairingRequested && !sock.authState.creds.registered) {
+          pairingRequested = true;
+          try {
+            // Clean phone: remove +, spaces, dashes
+            const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+            const code = await sock.requestPairingCode(cleanPhone);
+            const formatted = code?.match(/.{1,4}/g)?.join('-') || code; // Format as XXXX-XXXX
+            console.log(`[WhatsApp] Pairing code for ${userId}: ${formatted}`);
+            if (io) {
+              io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
+              io.to(userId).emit('whatsapp_status', { status: 'pairing_code_ready' });
+            }
+          } catch (codeErr) {
+            console.error(`[WhatsApp] Failed to get pairing code:`, codeErr.message);
+            if (io) io.to(userId).emit('whatsapp_status', { status: 'error', message: 'Could not generate pairing code. Try again.' });
+          }
+        }
+
+        if (connection === 'close') {
+          const statusCode = lastDisconnect?.error?.output?.statusCode;
+          const shouldReconnect = (statusCode !== DisconnectReason.loggedOut);
+          sessions.delete(userId);
+          connecting.delete(userId);
+          if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: shouldReconnect ? 'reconnecting' : 'loggedOut' });
+          if (shouldReconnect) {
+            setTimeout(() => connectWhatsApp(userId, io), 5000);
+          } else {
+            await clearState();
+            await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
+          }
+        } else if (connection === 'open') {
+          console.log(`[WhatsApp] Phone-paired connection opened for ${userId}`);
+          sessions.set(userId, sock);
+          await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
+          if (io) io.to(userId).emit('whatsapp_status', { status: 'connected' });
+        }
+      });
+
+      return sock;
+    } catch (error) {
+      console.error(`[WhatsApp] Phone pairing error for ${userId}:`, error.message);
+      connecting.delete(userId);
+      if (io) io.to(userId).emit('whatsapp_status', { status: 'error', message: error.message });
+      throw error;
+    }
+  })();
+
+  connecting.set(userId, connectionPromise);
+  return connectionPromise;
+};
+
 const connectWhatsApp = async (userId, io) => {
   // If already connecting, return that promise
   if (connecting.has(userId)) return connecting.get(userId);
@@ -172,6 +259,7 @@ const sendWhatsAppWish = async (userId, targetPhone, text) => {
 
 module.exports = {
   connectWhatsApp,
+  connectWhatsAppWithPhone,
   sendWhatsAppWish,
   getWhatsAppStatus,
   sessions
