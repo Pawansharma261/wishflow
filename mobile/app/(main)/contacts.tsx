@@ -2,8 +2,10 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, TextInput,
 import { supabase } from '../../src/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, Plus, Users, Trash2, Edit2, Phone, Instagram, Calendar, X } from 'lucide-react-native';
+import { Search, Plus, Users, Trash2, Edit2, Phone, Instagram, Calendar, X, Download } from 'lucide-react-native';
 import { format } from 'date-fns';
+import * as ContactsNative from 'expo-contacts';
+import * as Haptics from 'expo-haptics';
 
 const RELATIONSHIPS = ['friend', 'family', 'partner', 'colleague'];
 
@@ -33,6 +35,36 @@ export default function Contacts() {
       console.warn('Error fetching contacts:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePickPhoneContact = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const { status } = await ContactsNative.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'WishFlow needs access to your contacts to import a friend.');
+        return;
+      }
+
+      const contact = await ContactsNative.presentContactPickerAsync();
+      if (!contact) return; // User cancelled
+
+      if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) {
+        Alert.alert('No Phone Number', `${contact.name} does not have a phone number saved.`);
+        return;
+      }
+
+      const phoneNumber = contact.phoneNumbers[0].number || '';
+      
+      setFormData(prev => ({
+        ...prev,
+        name: contact.name || '',
+        phone_number: phoneNumber,
+      }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not import contact.');
     }
   };
 
@@ -131,10 +163,18 @@ export default function Contacts() {
       <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View style={{ flex: 1, backgroundColor: '#1a1740', padding: 24 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 24, fontWeight: '900', color: '#ffffff' }}>{editingId ? 'Edit Contact' : 'Add New Contact'}</Text>
               <TouchableOpacity onPress={closeModal} style={{ padding: 8, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12 }}><X size={20} color="rgba(255,255,255,0.6)" /></TouchableOpacity>
             </View>
+            
+            {!editingId && (
+              <TouchableOpacity onPress={handlePickPhoneContact} style={{ backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)', marginBottom: 20 }}>
+                <Download size={18} color="#818cf8" />
+                <Text style={{ color: '#818cf8', fontWeight: '900', fontSize: 15 }}>Pick from Phone Contacts</Text>
+              </TouchableOpacity>
+            )}
+
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={labelStyle}>Full Name *</Text>
               <TextInput value={formData.name} onChangeText={t => setFormData({ ...formData, name: t })} placeholder="Full Name" placeholderTextColor="rgba(255,255,255,0.3)" style={inputStyle} />
