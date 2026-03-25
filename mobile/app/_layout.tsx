@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, Tabs } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { supabase } from '../src/lib/supabaseClient';
 import { Session } from '@supabase/supabase-js';
@@ -13,27 +13,18 @@ export default function RootLayout() {
       setSession(session);
       setLoading(false);
     });
-
-    supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
+    supabase.auth.onAuthStateChange((_event, session) => setSession(session));
   }, []);
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#6d28d9' }}>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
-    );
-  }
+  if (loading) return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#6d28d9' }}>
+      <ActivityIndicator size="large" color="#ffffff" />
+    </View>
+  );
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {session ? (
-        <Stack.Screen name="(tabs)" />
-      ) : (
-        <Stack.Screen name="auth" />
-      )}
+      {session ? <Stack.Screen name="main" /> : <Stack.Screen name="auth" />}
     </Stack>
   );
 }
