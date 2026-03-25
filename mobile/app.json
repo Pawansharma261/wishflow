@@ -5,24 +5,51 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": false,
     "scheme": "wishflow",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#6d28d9"
+      "backgroundColor": "#0f0c29"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kptech.wishflow"
+      "bundleIdentifier": "com.kptech.wishflow",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "WishFlow uses the camera only to help you scan a QR code to link your WhatsApp account for personal celebration wish delivery.",
+        "NSPhotoLibraryUsageDescription": "WishFlow may access photos to let you add a personal photo to your celebration wishes.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["wishflow"]
+          }
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#6d28d9"
+        "backgroundColor": "#0f0c29"
       },
-      "package": "com.kptech.wishflow"
+      "package": "com.kptech.wishflow",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "wishflow"
+            },
+            {
+              "scheme": "https",
+              "host": "wishflow-backend-uyd2.onrender.com",
+              "pathPrefix": "/api/integrations/instagram/callback"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
