@@ -1,49 +1,54 @@
-const { BufferJSON, initAuthCreds } = require('@whiskeysockets/baileys');
+const { initAuthCreds } = require('@whiskeysockets/baileys');
 const redis = require('../lib/redis');
 
 /**
- * useRedisAuthState - A binary-safe Redis auth state provider for Baileys.
- * Uses BufferJSON to ensure cryptographic keys are not corrupted during storage.
+ * Binary-safe JSON helpers for crypto Buffers.
  */
+const replacer = (key, value) => {
+  if (value && value.type === 'Buffer' && Array.isArray(value.data)) {
+    return { type: 'Buffer', data: Buffer.from(value.data).toString('base64') };
+  }
+  if (value instanceof Buffer) {
+    return { type: 'Buffer', data: value.toString('base64') };
+  }
+  return value;
+};
+
+const reviver = (key, value) => {
+  if (value && value.type === 'Buffer') {
+    return Buffer.from(value.data, 'base64');
+  }
+  return value;
+};
+
 const useRedisAuthState = async (userId) => {
   const sessionKey = `whatsapp_session:${userId}`;
   const keysPrefix = `whatsapp_keys:${userId}:`;
 
   const readData = async (key) => {
-    try {
-      const data = await redis.get(key);
-      if (!data) return null;
-      return JSON.parse(data, BufferJSON.reviver);
-    } catch (err) {
-      console.error(`[Redis] Error reading key ${key}:`, err);
-      return null;
-    }
+    const data = await redis.get(key);
+    if (!data) return null;
+    // If it's already an object (upstash auto-parse), we need to manually revive buffers
+    const obj = typeof data === 'string' ? JSON.parse(data, reviver) : JSON.parse(JSON.stringify(data), reviver);
+    return obj;
   };
 
-  const writeData = async (data, key) => {
-    try {
-      const json = JSON.stringify(data, BufferJSON.replacer);
-      await redis.set(key, json);
-    } catch (err) {
-      console.error(`[Redis] Error writing key ${key}:`, err);
-    }
+  const writeData = async (key, data) => {
+    const json = JSON.stringify(data, replacer);
+    await redis.set(key, json);
   };
 
   const scanAndDelete = async (pattern) => {
     let cursor = '0';
-    let totalDeleted = 0;
     do {
       const [_cursor, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
       cursor = _cursor;
-      if (keys.length > 0) {
+      if (keys && keys.length > 0) {
         await redis.del(...keys);
-        totalDeleted += keys.length;
       }
     } while (cursor !== '0');
-    return totalDeleted;
   };
 
-  // Load existing creds or init new ones
   const loadedCreds = await readData(sessionKey);
   const creds = loadedCreds || initAuthCreds();
 
@@ -67,11 +72,8 @@ const useRedisAuthState = async (userId) => {
             for (const id in data[category]) {
               const value = data[category][id];
               const key = `${keysPrefix}${category}-${id}`;
-              if (value) {
-                tasks.push(writeData(value, key));
-              } else {
-                tasks.push(redis.del(key));
-              }
+              if (value) tasks.push(writeData(key, value));
+              else tasks.push(redis.del(key));
             }
           }
           await Promise.all(tasks);
@@ -79,17 +81,12 @@ const useRedisAuthState = async (userId) => {
       },
     },
     saveCreds: async () => {
-      await writeData(creds, sessionKey);
+      await writeData(sessionKey, creds);
     },
     clearState: async () => {
-      try {
-        await redis.del(sessionKey);
-        await scanAndDelete(`${keysPrefix}*`);
-        // Reset local object to fresh state
-        Object.assign(creds, initAuthCreds());
-      } catch (err) {
-        console.error(`[Redis] Failed to clear state for ${userId}:`, err);
-      }
+      await redis.del(sessionKey);
+      await scanAndDelete(`${keysPrefix}*`);
+      Object.assign(creds, initAuthCreds());
     },
   };
 };
