@@ -5,8 +5,8 @@ const {
   makeCacheableSignalKeyStore,
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
-const pino = require('pino'); // FIX: Missing pino import
-const useRedisAuthState = require('./useRedisAuthState');
+const pino = require('pino');
+const { useRedisAuthState, clearWhatsAppState } = require('./useRedisAuthState');
 const supabaseAdmin = require('../db/supabaseAdmin');
 
 const logBuffer = [];
@@ -34,15 +34,20 @@ const getWhatsAppStatus = (userId) => {
 
 const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-  console.log(`[WA:phone] 📞 Linking ${userId} -> ${cleanPhone}`);
+  console.log(`[WA:phone] Linking ${userId} -> ${cleanPhone}`);
 
   const existing = sessions.get(userId);
   if (existing) { try { existing.end(); } catch(e) {} sessions.delete(userId); }
   connecting.delete(userId);
   phonePairing.add(userId);
 
-  const { state, saveCreds, clearState } = await useRedisAuthState(userId);
-  await clearState(); 
+  // ── KEY FIX — Separated Clear/Use Logic — Suggested by Claude ──────────────
+  // clearWhatsAppState() wipes Redis FIRST.
+  // useRedisAuthState() is called AFTER the wipe so that `state.creds` is
+  // a brand-new initAuthCreds() object that Baileys has never seen.
+  // ─────────────────────────────────────────────────────────────────────────
+  await clearWhatsAppState(userId);
+  const { state, saveCreds } = await useRedisAuthState(userId);
 
   const { version } = await fetchLatestBaileysVersion();
   
@@ -65,55 +70,62 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   sock.ev.on('creds.update', saveCreds);
 
   return new Promise((resolve, reject) => {
-    let pairingRequested = false;
-
-    const timeout = setTimeout(() => {
-      if (!pairingRequested) reject(new Error('Pairing timed out. WhatsApp is unresponsive.'));
-    }, 120000);
+    let resolved = false;
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
-      console.log(`[WA:phone] ${userId} | ${connection || 'handshaking'}`);
+      console.log(`[WA:phone] ${userId} | Status: ${connection}`);
 
-      // FIX: Call requestPairingCode immediately when qr fires (no delay)
-      if (qr && !pairingRequested) {
-        pairingRequested = true;
+      if (qr && !resolved) {
         try {
-          console.log(`[WA:phone] 📲 Generating Code...`);
-          const rawCode = await sock.requestPairingCode(cleanPhone);
-          const formatted = String(rawCode).replace(/(.{4})(.{4})/, '$1-$2');
+          console.log(`[WA:phone] 📲 Requesting Pairing Code...`);
+          // Request immediately — handshake window is short
+          const code = await sock.requestPairingCode(cleanPhone);
+          const raw = String(code).replace(/-/g, '');
+          const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
           
           if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
-          console.log(`[WA:phone] ✅ Code: ${formatted}`);
+          console.log(`[WA:phone] ✅ PAIRING CODE: ${formatted}`);
           
-          clearTimeout(timeout);
+          resolved = true;
           resolve({ pairingCode: formatted });
         } catch (err) {
-          console.error(`[WA:phone] FAIL:`, err.message);
-          phonePairing.delete(userId);
-          reject(err);
+          if (!resolved) {
+            resolved = true;
+            phonePairing.delete(userId);
+            reject(err);
+          }
         }
       }
 
       if (connection === 'open') {
-        console.log(`[WA:phone] 🎉 PAIRING COMPLETE for ${userId}`);
+        console.log(`[WA:phone] 🎉 PAIRING COMPLETE`);
         phonePairing.delete(userId);
         sessions.set(userId, sock);
         await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
         if (io) io.to(userId).emit('whatsapp_status', { status: 'connected' });
-      } 
-      
-      // FIX: Reject Promise on connection close to prevent infinite hang
-      if (connection === 'close') {
+      } else if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        
-        if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: statusCode, shouldReconnect });
-        
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+
+        if (io) {
+          io.to(userId).emit('whatsapp_status', { 
+            status: 'disconnected', 
+            reason: statusCode, 
+            shouldReconnect: !isLoggedOut 
+          });
+        }
+
         phonePairing.delete(userId);
         sessions.delete(userId);
-        
-        reject(new Error(`Connection closed. Code: ${statusCode}. LoggedOut: ${!shouldReconnect}`));
+
+        if (!resolved) {
+          resolved = true;
+          reject(new Error(`Connection closed before pairing. StatusCode: ${statusCode}`));
+        } else if (!isLoggedOut) {
+          // Normal reconnect logic for already-paired sessions
+          setTimeout(() => connectWhatsApp(userId, io), 5000);
+        }
       }
     });
   });
@@ -126,7 +138,7 @@ const connectWhatsApp = async (userId, io) => {
 
   try {
     const p = (async () => {
-      const { state, saveCreds, clearState } = await useRedisAuthState(userId);
+      const { state, saveCreds } = await useRedisAuthState(userId);
       const { version } = await fetchLatestBaileysVersion();
       
       const sock = makeWASocket({
@@ -157,7 +169,7 @@ const connectWhatsApp = async (userId, io) => {
           if (discCode !== DisconnectReason.loggedOut) {
             setTimeout(() => connectWhatsApp(userId, io), 5000);
           } else { 
-            await clearState(); 
+            await clearWhatsAppState(userId); 
             await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId); 
             if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected' }); 
           }
@@ -189,8 +201,7 @@ const disconnectWhatsApp = async (userId) => {
   const sock = sessions.get(userId);
   if (sock) { try { await sock.logout(); } catch(e) {} sessions.delete(userId); }
   connecting.delete(userId);
-  const { clearState } = await useRedisAuthState(userId);
-  await clearState();
+  await clearWhatsAppState(userId);
   await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
 };
 
