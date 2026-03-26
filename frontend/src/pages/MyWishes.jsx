@@ -29,10 +29,11 @@ const MyWishes = () => {
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('wishes')
-      .select('*, contacts(name)')
+      .select('*')
       .eq('user_id', user.id)
-      .order('scheduled_datetime', { ascending: false });
+      .order('scheduled_for', { ascending: false });
     
+    if (error) console.error('MyWishes fetch error:', error.message);
     if (data) setWishes(data);
     setLoading(false);
   };
@@ -110,14 +111,14 @@ const MyWishes = () => {
               {filteredWishes.map((wish) => (
                 <tr key={wish.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-8 py-6">
-                    <p className="font-bold text-slate-900">{wish.contacts.name}</p>
+                    <p className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || '—'}</p>
                   </td>
                   <td className="px-8 py-6 uppercase font-black tracking-widest text-[10px] text-brand-violet">
                     {wish.occasion_type}
                   </td>
                   <td className="px-8 py-6">
-                    <p className="text-sm font-medium text-slate-700">{format(new Date(wish.scheduled_datetime), 'MMM do, yyyy')}</p>
-                    <p className="text-xs text-slate-400 font-bold">{format(new Date(wish.scheduled_datetime), 'h:mm a')}</p>
+                    <p className="text-sm font-medium text-slate-700">{wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, yyyy') : '—'}</p>
+                    <p className="text-xs text-slate-400 font-bold">{wish.scheduled_for ? format(new Date(wish.scheduled_for), 'h:mm a') : ''}</p>
                   </td>
                   <td className="px-8 py-6">
                     <div className="flex -space-x-1">

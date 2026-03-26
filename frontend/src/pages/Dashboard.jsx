@@ -72,7 +72,7 @@ const Dashboard = () => {
 
     const { data: wishes } = await supabase
       .from('wishes')
-      .select('*, contacts(name)')
+      .select('*')
       .eq('user_id', user.id);
 
     const sent = wishes?.filter(w => w.status === 'sent').length || 0;
@@ -81,7 +81,7 @@ const Dashboard = () => {
     
     const upcoming = wishes
       ?.filter(w => w.status === 'pending')
-      .sort((a, b) => new Date(a.scheduled_datetime) - new Date(b.scheduled_datetime))
+      .sort((a, b) => new Date(a.scheduled_for) - new Date(b.scheduled_for))
       .slice(0, 3) || [];
     setUpcomingWishes(upcoming);
 
@@ -198,8 +198,8 @@ const Dashboard = () => {
                     {wish.occasion_type === 'birthday' ? '🎂' : wish.occasion_type === 'christmas' ? '🎄' : wish.occasion_type === 'diwali' ? '🪔' : '✨'}
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900">{wish.contacts.name}</h4>
-                    <p className="text-slate-500 text-sm capitalize">{wish.occasion_type} • {format(new Date(wish.scheduled_datetime), 'MMM do, h:mm a')}</p>
+                    <h4 className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || '—'}</h4>
+                    <p className="text-slate-500 text-sm capitalize">{wish.occasion_type} • {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, h:mm a') : '—'}</p>
                   </div>
                 </div>
                 <div className="flex -space-x-2">

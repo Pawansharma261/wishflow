@@ -178,7 +178,7 @@ const Contacts = () => {
   };
 
   const handleEditClick = (contact) => {
-    let phoneNum = contact.phone_number || '';
+    let phoneNum = contact.phone || contact.phone_number || '';
     let matchedCountry = COUNTRIES.find(c => phoneNum.startsWith(c.dial));
     
     if (matchedCountry) {
@@ -214,19 +214,24 @@ const Contacts = () => {
     const fullPhone = formData.phone_number
       ? `${selectedCountry.dial}${formData.phone_number.replace(/^0/, '')}`
       : '';
+    const payload = {
+      name: formData.name,
+      relationship: formData.relationship,
+      phone: fullPhone,
+      instagram_username: formData.instagram_username || null,
+      birthday: formData.birthday || null,
+      anniversary: formData.anniversary || null,
+      callmebot_api_key: formData.callmebot_api_key || null
+    };
       
     if (editingId) {
-       const { error } = await supabase.from('contacts').update({
-         ...formData, phone_number: fullPhone
-       }).eq('id', editingId);
+       const { error } = await supabase.from('contacts').update(payload).eq('id', editingId);
        if (!error) {
          fetchContacts();
          closeFormModal();
        }
     } else {
-       const { error } = await supabase.from('contacts').insert({
-         ...formData, phone_number: fullPhone, user_id: user.id,
-       });
+       const { error } = await supabase.from('contacts').insert({ ...payload, user_id: user.id });
        if (!error) {
          fetchContacts();
          closeFormModal();
@@ -300,7 +305,7 @@ const Contacts = () => {
               </span>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center space-x-2 text-white/60">
-                  <Phone size={13} /><span>{contact.phone_number || 'No phone'}</span>
+                  <Phone size={13} /><span>{contact.phone || contact.phone_number || 'No phone'}</span>
                 </div>
                 <div className="flex items-center space-x-2 text-white/60">
                   <Instagram size={13} /><span>@{contact.instagram_username || 'n/a'}</span>

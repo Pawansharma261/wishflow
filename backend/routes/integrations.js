@@ -32,18 +32,20 @@ router.post('/whatsapp/pair-phone', async (req, res) => {
 
   const io = req.app.get('io');
   try {
-  try {
+    // Remove all non-digits to sanitize number (handles +91, spaces, dashes)
     const cleanPhone = phoneNumber.replace(/[\D]/g, '');
     console.log(`[Integrations] Non-blocking pairing for ${userId} -> ${cleanPhone}`);
-    
-    // Start pairing in background without awaiting the whole socket setup
+
+    // Start pairing in background without awaiting — prevents API timeout
     connectWhatsAppWithPhone(userId, cleanPhone, io).catch(err => {
       console.error(`[Background Task] WhatsApp pair failure for ${userId}:`, err.message);
+      // Emit error back to client via socket
+      if (io) io.to(userId).emit('whatsapp_status', { status: 'error', message: err.message });
     });
 
-    res.json({ 
-      success: true, 
-      message: 'Pairing process started. Please wait a few seconds for the code to appear.' 
+    res.json({
+      success: true,
+      message: 'Pairing process started. Please wait 5–15 seconds for your code to appear.'
     });
   } catch (error) {
     console.error('[Integrations] WhatsApp phone pair error:', error.message);

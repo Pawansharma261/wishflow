@@ -1,0 +1,176 @@
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { Calendar, Filter, Clock, CheckCircle2, XCircle, MoreVertical, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+const MyWishes = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [wishes, setWishes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [wishToDelete, setWishToDelete] = useState(null); // ID of the wish selected for deletion
+
+  useEffect(() => {
+    // Read filter directly from navigation URL parameters
+    const params = new URLSearchParams(location.search);
+    const searchFilter = params.get('filter');
+    if (searchFilter && ['all', 'pending', 'sent'].includes(searchFilter)) {
+      setFilter(searchFilter);
+    }
+  }, [location]);
+
+  useEffect(() => {
+    fetchWishes();
+  }, []);
+
+  const fetchWishes = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from('wishes')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('scheduled_for', { ascending: false });
+    
+    if (error) console.error('MyWishes fetch error:', error.message);
+    if (data) setWishes(data);
+    setLoading(false);
+  };
+
+  const deleteWish = (id) => {
+    setWishToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!wishToDelete) return;
+    
+    // Optimistic UI update could go here, but we'll wait for DB sync
+    const { error } = await supabase.from('wishes').delete().eq('id', wishToDelete);
+    if (error) {
+      console.error('Failed to delete wish', error);
+      alert('Failed to delete wish.');
+    } else {
+      fetchWishes();
+    }
+    setWishToDelete(null);
+  };
+
+  const filteredWishes = filter === 'all' ? wishes : wishes.filter(w => w.status === filter);
+
+  const getStatusStyle = (status) => {
+    switch (status) {
+      case 'sent': return 'bg-green-100 text-green-600';
+      case 'failed': return 'bg-red-100 text-red-600';
+      default: return 'bg-orange-100 text-orange-600';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'sent': return <CheckCircle2 size={14} />;
+      case 'failed': return <XCircle size={14} />;
+      default: return <Clock size={14} />;
+    }
+  };
+
+  return (
+    <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+        <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight">Timeline</h1>
+        <div className="flex bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/20">
+          {['all', 'pending', 'sent'].map((f) => (
+            <button
+              key={f}
+              onClick={() => {
+                setFilter(f);
+                navigate(`/wishes?filter=${f}`, { replace: true });
+              }}
+              className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${filter === f ? 'bg-white shadow-xl text-slate-900' : 'text-white/60 hover:text-white'}`}
+            >
+              <span className="capitalize">{f}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card overflow-hidden !p-0 border-none shadow-2xl shadow-slate-200/50">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Recipient</th>
+                <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Occasion</th>
+                <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Scheduled For</th>
+                <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Channels</th>
+                <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest">Status</th>
+                <th className="px-8 py-5 text-xs font-black text-slate-400 uppercase tracking-widest"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {filteredWishes.map((wish) => (
+                <tr key={wish.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-8 py-6">
+                    <p className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || '—'}</p>
+                  </td>
+                  <td className="px-8 py-6 uppercase font-black tracking-widest text-[10px] text-brand-violet">
+                    {wish.occasion_type}
+                  </td>
+                  <td className="px-8 py-6">
+                    <p className="text-sm font-medium text-slate-700">{wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, yyyy') : '—'}</p>
+                    <p className="text-xs text-slate-400 font-bold">{wish.scheduled_for ? format(new Date(wish.scheduled_for), 'h:mm a') : ''}</p>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex -space-x-1">
+                      {wish.channels.map(c => (
+                        <div key={c} title={c} className="w-6 h-6 rounded-full border border-white bg-slate-200 flex items-center justify-center text-[8px] font-black uppercase text-slate-600">
+                          {c[0]}
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${getStatusStyle(wish.status)}`}>
+                      {getStatusIcon(wish.status)}
+                      <span>{wish.status}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <button onClick={() => deleteWish(wish.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all" title="Delete Wish">
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {filteredWishes.length === 0 && (
+             <div className="py-20 text-center">
+                <p className="text-slate-400 font-medium">No results found.</p>
+             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modern React Confirmation Modal (Bypasses Native Mobile blocks) */}
+      {wishToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-scale-in">
+             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={32} />
+             </div>
+             <h3 className="text-2xl font-black text-center mb-2">Delete Wish?</h3>
+             <p className="text-slate-500 text-center mb-8 font-medium">This action cannot be undone. The scheduled wish will be permanently removed.</p>
+             <div className="flex space-x-4">
+                <button onClick={() => setWishToDelete(null)} className="flex-1 py-3 rounded-xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">Cancel</button>
+                <button onClick={confirmDelete} className="flex-1 py-3 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/30 transition-all">Delete</button>
+             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MyWishes;

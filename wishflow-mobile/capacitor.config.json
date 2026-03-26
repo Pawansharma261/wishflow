@@ -1,0 +1,6 @@
+{
+  "appId": "com.kptech.wishflow",
+  "appName": "WishFlow",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

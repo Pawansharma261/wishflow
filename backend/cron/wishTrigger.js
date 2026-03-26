@@ -14,7 +14,7 @@ const checkAndSendWishes = async () => {
         users!inner (*)
       `)
       .eq('status', 'pending')
-      .lte('scheduled_datetime', new Date().toISOString());
+      .lte('scheduled_for', new Date().toISOString());
 
     if (error) throw error;
 
@@ -23,7 +23,7 @@ const checkAndSendWishes = async () => {
     console.log(`[WishFlow] Processing ${wishes.length} due wish(es)...`);
 
     for (const wish of wishes) {
-      const { id, wish_message, channels, contact_id, user_id, is_recurring, recurrence_rule, scheduled_datetime } = wish;
+      const { id, message, channels, contact_id, user_id, is_recurring, recurrence_rule, scheduled_for } = wish;
       const contact = wish.contacts;
       const user = wish.users;
 
@@ -32,21 +32,22 @@ const checkAndSendWishes = async () => {
       const results = [];
 
       // === WhatsApp via Baileys (Real Device) ===
-      if (channels.includes('whatsapp') && contact.phone_number) {
+      const phoneToUse = contact.phone || wish.contact_phone;
+      if (channels.includes('whatsapp') && phoneToUse) {
         try {
-          const success = await sendWhatsAppWish(user_id, contact.phone_number, wish_message);
+          const success = await sendWhatsAppWish(user_id, phoneToUse, message);
           results.push({ channel: 'whatsapp', status: success ? 'sent' : 'failed', payload: { success } });
-          console.log(`[WishFlow] WhatsApp to ${contact.phone_number}: ${success ? '✅ sent' : '❌ failed'}`);
+          console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ${success ? '✅ sent' : '❌ failed'}`);
         } catch (error) {
           results.push({ channel: 'whatsapp', status: 'failed', payload: { error: error.message } });
-          console.log(`[WishFlow] WhatsApp to ${contact.phone_number}: ❌ failed (${error.message})`);
+          console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ❌ failed (${error.message})`);
         }
       }
 
       // === Instagram DM via Meta Graph API ===
       if (channels.includes('instagram') && contact.instagram_username) {
         if (user.instagram_access_token) {
-          const res = await sendInstagramDM(contact.instagram_username, wish_message, user.instagram_access_token);
+          const res = await sendInstagramDM(contact.instagram_username, message, user.instagram_access_token);
           results.push({ channel: 'instagram', status: res.success ? 'sent' : 'failed', payload: res });
           console.log(`[WishFlow] Instagram to @${contact.instagram_username}: ${res.success ? '✅ sent' : '❌ ' + (res.error?.message || res.error)}`);
         } else {
@@ -63,7 +64,7 @@ const checkAndSendWishes = async () => {
 
         if (devices && devices.length > 0) {
           for (const device of devices) {
-            const res = await sendPushNotification(device.fcm_token, `Wish for ${contact.name}`, wish_message);
+            const res = await sendPushNotification(device.fcm_token, `Wish for ${contact.name}`, message);
             results.push({ channel: 'push', status: res.success ? 'sent' : 'failed', payload: res });
           }
         } else {
@@ -93,14 +94,14 @@ const checkAndSendWishes = async () => {
 
       // === Handle Recurring Wishes ===
       if (is_recurring && overallStatus === 'sent') {
-        const nextDate = calculateNextOccurrence(scheduled_datetime, recurrence_rule);
+        const nextDate = calculateNextOccurrence(scheduled_for, recurrence_rule);
         await supabaseAdmin.from('wishes').insert({
           user_id,
           contact_id,
           occasion_type: wish.occasion_type,
-          wish_message,
+          message,
           media_url: wish.media_url,
-          scheduled_datetime: nextDate,
+          scheduled_for: nextDate,
           channels,
           status: 'pending',
           is_recurring: true,
