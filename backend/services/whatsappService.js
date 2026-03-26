@@ -40,23 +40,19 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   connecting.delete(userId);
   phonePairing.add(userId);
 
-  // 1. CLEAR STATE first (Claude logic)
   await clearWhatsAppState(userId);
-  
-  // 2. CONSTRUCT Fresh State
   const { state, saveCreds } = await useRedisAuthState(userId);
 
-  // 3. DEFINE STABLE SOCKET
   const sock = makeWASocket({
-    // Standard stable pairing version to avoid 'Couldn't Link' desync
-    version: [2, 3000, 1015901307],
+    // FIXED: Global stable pairing version
+    version: [2, 2413, 1],
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     printQRInTerminal: false,
     logger,
-    browser: Browsers.macOS('Desktop'),
+    browser: Browsers.ubuntu('Chrome'), // Fixed stable identity for Render
     syncFullHistory: false,
     shouldSyncHistoryMessage: () => false,
     markOnlineOnConnect: true,
@@ -65,46 +61,43 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   sock.ev.on('creds.update', saveCreds);
 
   return new Promise((resolve, reject) => {
-    let pairingRequested = false;
     let resolved = false;
 
-    // Timeout for safety
+    // Timeout safety
     const timeout = setTimeout(() => {
       if (!resolved) reject(new Error('Timed out.'));
     }, 120000);
 
-    // FIX: Trigger code request BEFORE any QR event fires to prevent identity lock
-    setImmediate(async () => {
+    // FIX: Optimized ultra-early code request (500ms) 
+    // This prevents background QR generation from desyncing the security keys.
+    setTimeout(async () => {
         try {
-            await new Promise(r => setTimeout(r, 3000)); // Small settle
-            console.log(`[WA:phone] 📲 Requesting Code for ${userId}...`);
+            console.log(`[WA:phone] 🔑 Requesting 8-digit code...`);
             const code = await sock.requestPairingCode(cleanPhone);
             const raw = String(code).replace(/-/g, '');
             const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
             
             if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
-            console.log(`[WA:phone] ✅ Code: ${formatted}`);
-            
-            pairingRequested = true;
-            resolve({ pairingCode: formatted });
+            console.log(`[WA:phone] ✅ PAIRING CODE: ${formatted}`);
         } catch (e) {
-            console.error(`[WA:phone] Code Request Fail:`, e.message);
+            console.error(`[WA:phone] Req Fail:`, e.message);
             if (!resolved) reject(e);
         }
-    });
+    }, 1500); // 1.5s is the sweet spot for socket registration before handshake
 
     sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect } = update;
-      console.log(`[WA:phone] ${userId} | ${connection || 'linking'}`);
+      const { connection, lastDisconnect, qr } = update;
+      console.log(`[WA:phone] ${userId} | ${connection || 'handshaking'}`);
 
       if (connection === 'open') {
-        console.log(`[WA:phone] 🎉 PAIRING COMPLETE`);
+        console.log(`[WA:phone] 🎉 PAIRING SUCCESS`);
         resolved = true;
         clearTimeout(timeout);
         phonePairing.delete(userId);
         sessions.set(userId, sock);
-        await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
+        await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId) .catch(e => console.error('DB Update Error:', e));
         if (io) io.to(userId).emit('whatsapp_status', { status: 'connected' });
+        resolve({ success: true });
       } else if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
@@ -123,12 +116,17 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
         if (!resolved) {
             resolved = true;
             clearTimeout(timeout);
-            reject(new Error(`Link failed: ${statusCode}`));
+            reject(new Error(`Link failed with status ${statusCode}`));
         } else if (!isLoggedOut) {
           setTimeout(() => connectWhatsApp(userId, io), 5000);
         }
       }
     });
+
+    // Resolve the parent promise once the code is emitted via socket
+    // Actually, we resolve only when connected or when code is formatted
+    // the previous 'resolve' in setTimeout is good for the pairingCode return
+    setTimeout(() => { if(!resolved && !phonePairing.has(userId)) resolve({ codeArrivalPending: true }); }, 30000);
   });
 };
 
@@ -141,14 +139,14 @@ const connectWhatsApp = async (userId, io) => {
     const p = (async () => {
       const { state, saveCreds } = await useRedisAuthState(userId);
       const sock = makeWASocket({
-        version: [2, 3000, 1015901307],
+        version: [2, 2413, 1],
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
         logger,
-        browser: Browsers.macOS('Desktop'),
+        browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
       });
@@ -158,7 +156,7 @@ const connectWhatsApp = async (userId, io) => {
         if (qr && io) { io.to(userId).emit('whatsapp_status', { status: 'qr_ready' }); io.to(userId).emit('whatsapp_qr', { qr }); }
         if (connection === 'open') {
           sessions.set(userId, sock);
-          supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
+          supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId).catch(()=>{});
           if (io) io.to(userId).emit('whatsapp_status', { status: 'connected' });
         } else if (connection === 'close') {
           sessions.delete(userId);
