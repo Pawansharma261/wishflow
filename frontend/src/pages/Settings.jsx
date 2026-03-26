@@ -82,14 +82,14 @@ const Settings = () => {
       } catch (err) { console.error('QR render error:', err); }
     });
 
-    // Pairing code delivered via WebSocket (fire-and-forget pattern)
+    // Pairing code delivered via WebSocket
     socket.on('whatsapp_pairing_code', (data) => {
       console.log('[WS] Pairing code received:', data.code);
       setPairingCode(data.code);
-      setCodeTimer(90);          // 90-second countdown
+      setCodeTimer(180);          // Increased to 180-second countdown for stability
       setWaStatus('code_ready');
       setWaLoading(false);
-      setPairingMsg('Enter this code in WhatsApp NOW — you have 90 seconds!');
+      setPairingMsg('Enter this code in WhatsApp NOW — you have 3 minutes!');
     });
 
     socket.on('whatsapp_error', (data) => {
@@ -97,16 +97,20 @@ const Settings = () => {
       setPairingMsg('');
       setWaStatus('disconnected');
       setWaLoading(false);
-      alert('WhatsApp pairing failed: ' + data.message);
+      // alert('WhatsApp pairing failed: ' + data.message);
     });
 
     socket.on('whatsapp_status', (data) => {
-      // Don't let background socket events overwrite a visible pairing code or QR
+      // CRITICAL: Protect the pairing code from being cleared by status blips
       const cur = waStatusRef.current;
-      if ((cur === 'qr_ready' || cur === 'code_ready') && data.status === 'connecting') return;
+      if (cur === 'code_ready' && data.status !== 'connected') {
+        console.log('[WS] Status update suppressed to keep code visible:', data.status);
+        return; 
+      }
 
       console.log('[WS] Status:', data.status);
       setWaStatus(data.status);
+
       if (data.status === 'connected') {
         setProfile(p => ({ ...p, whatsapp_connected: true }));
         setWaLoading(false);
@@ -118,6 +122,7 @@ const Settings = () => {
         setWaLoading(false);
       }
     });
+
   };
 
   // ── QR method ────────────────────────────────────────────────────────────────
