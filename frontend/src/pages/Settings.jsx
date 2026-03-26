@@ -21,9 +21,25 @@ const Settings = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [pairingCode, setPairingCode] = useState('');
   const [pairingMsg, setPairingMsg]   = useState('');
+  const [codeTimer, setCodeTimer]     = useState(0);  // countdown seconds
+  const codeTimerRef = useRef(null);
   const waStatusRef = useRef(waStatus);
 
   useEffect(() => { waStatusRef.current = waStatus; }, [waStatus]);
+
+  // Countdown timer when pairing code is showing
+  useEffect(() => {
+    if (pairingCode && codeTimer > 0) {
+      codeTimerRef.current = setTimeout(() => setCodeTimer(t => t - 1), 1000);
+    } else if (pairingCode && codeTimer === 0) {
+      // Code expired — clear it
+      setPairingCode('');
+      setWaStatus('disconnected');
+      setWaLoading(false);
+      setPairingMsg('Code expired. Click "Get New Code" to try again.');
+    }
+    return () => clearTimeout(codeTimerRef.current);
+  }, [pairingCode, codeTimer]);
 
   useEffect(() => {
     fetchProfile();
@@ -70,9 +86,10 @@ const Settings = () => {
     socket.on('whatsapp_pairing_code', (data) => {
       console.log('[WS] Pairing code received:', data.code);
       setPairingCode(data.code);
+      setCodeTimer(90);          // 90-second countdown
       setWaStatus('code_ready');
       setWaLoading(false);
-      setPairingMsg('Enter this code in WhatsApp to link your account.');
+      setPairingMsg('Enter this code in WhatsApp NOW — you have 90 seconds!');
     });
 
     socket.on('whatsapp_error', (data) => {
@@ -330,9 +347,15 @@ const Settings = () => {
                 {pairingMode === 'phone' && !waConnected && (
                   <div className="relative z-10 space-y-3">
                     {waCodeReady && pairingCode ? (
-                      /* Show the pairing code */
+                      /* Show the pairing code with countdown */
                       <div className="bg-white rounded-3xl p-5 text-center shadow-2xl">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Your Pairing Code</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Pairing Code</p>
+
+                        {/* Countdown timer */}
+                        <div className={`text-xs font-bold mb-3 ${codeTimer <= 20 ? 'text-red-500 animate-pulse' : 'text-orange-500'}`}>
+                          ⏱ Expires in {codeTimer}s — Enter it in WhatsApp NOW
+                        </div>
+
                         <div className="text-4xl font-black tracking-[0.25em] text-slate-900 bg-slate-50 py-5 rounded-2xl border-2 border-green-100 font-mono mb-3">
                           {pairingCode}
                         </div>
@@ -342,18 +365,23 @@ const Settings = () => {
                         >
                           <Copy size={12} /> Copy Code
                         </button>
-                        <div className="text-left bg-slate-50 rounded-xl p-3 space-y-1">
-                          <p className="text-[11px] font-black text-slate-600 mb-1">Steps to link:</p>
+                        <div className="text-left bg-slate-50 rounded-xl p-3 space-y-1 mb-3">
+                          <p className="text-[11px] font-black text-slate-600 mb-1">⚡ Do this RIGHT NOW:</p>
                           {[
                             'Open WhatsApp on your phone',
-                            'Tap ⋮ → Linked Devices',
+                            'Tap ⋮ Menu → Linked Devices',
                             'Tap "Link with phone number"',
-                            `Enter: ${pairingCode}`,
+                            `Enter the code: ${pairingCode}`,
                           ].map((s, i) => (
                             <p key={i} className="text-[11px] text-slate-500">{i + 1}. {s}</p>
                           ))}
                         </div>
-                        {pairingMsg && <p className="text-[10px] text-green-600 font-bold mt-3">{pairingMsg}</p>}
+                        <button
+                          onClick={connectWithPhone}
+                          className="text-[11px] text-slate-400 hover:text-green-600 font-bold underline"
+                        >
+                          ↻ Get New Code
+                        </button>
                       </div>
                     ) : (
                       /* Phone number input + button */
