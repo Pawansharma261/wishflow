@@ -120,33 +120,38 @@ const Settings = () => {
   };
 
   // ── Phone Number pairing method ───────────────────────────────────────────────
-  // Fire-and-forget: HTTP returns immediately, code arrives via 'whatsapp_pairing_code' WS event
+  // Step 1: Force-reset clears stale Redis session (so creds.registered=false on server)
+  // Step 2: pair-phone fires in background, code arrives via 'whatsapp_pairing_code' WS event
   const connectWithPhone = async () => {
     const cleaned = phoneNumber.replace(/[^0-9]/g, '');
     if (cleaned.length < 10) {
-      alert('Please enter a valid phone number with country code (e.g. 919876543210)');
+      alert('Please enter a valid phone number with country code (e.g. 919817203207)');
       return;
     }
     setWaLoading(true);
     setWaStatus('connecting');
     setPairingCode('');
-    setPairingMsg('Connecting to WhatsApp... Your code will appear in 10–30 seconds.');
+    setPairingMsg('Step 1/2: Clearing old session...');
 
     try {
-      // This returns immediately — the pairing code will arrive via WebSocket
+      // CRITICAL: Reset first so backend creds.registered=false → requestPairingCode runs
+      await apiClient.post('/api/integrations/whatsapp/force-reset', { userId });
+      setPairingMsg('Step 2/2: Requesting pairing code from WhatsApp (10–30s)...');
+
+      // Fire pair-phone — returns immediately, code arrives via WebSocket
       await apiClient.post('/api/integrations/whatsapp/pair-phone', {
         userId,
         phoneNumber: cleaned,
       });
-      // Keep loading=true and msg visible — code arrives via 'whatsapp_pairing_code' WS event
-      setPairingMsg('⏳ Waiting for code from WhatsApp (10–30s)...');
+      // Keep spinner running — 'whatsapp_pairing_code' WS event will show the code
+      setPairingMsg('⏳ Waiting for WhatsApp to generate your code...');
     } catch (err) {
       setPairingMsg('');
       setWaStatus('disconnected');
       setWaLoading(false);
       alert('Failed to start pairing: ' + (err.message || 'Unknown error'));
     }
-    // NOTE: setWaLoading(false) is called inside the 'whatsapp_pairing_code' or 'whatsapp_error' handler
+    // waLoading cleared by 'whatsapp_pairing_code' or 'whatsapp_error' socket events
   };
 
   const copyPairingCode = () => {
