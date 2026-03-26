@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const supabaseAdmin = require('../db/supabaseAdmin');
-const { connectWhatsApp, connectWhatsAppWithPhone } = require('../services/whatsappService');
+const { connectWhatsApp, connectWhatsAppWithPhone, disconnectWhatsApp } = require('../services/whatsappService');
 
 // POST /api/integrations/whatsapp/connect
 // Initiates the Baileys connection which will emit QR code to the user's socket room
@@ -25,31 +25,57 @@ router.post('/whatsapp/connect', async (req, res) => {
 
 // POST /api/integrations/whatsapp/pair-phone
 // Initiates a phone-number pairing flow (no QR code needed)
-// Returns a pairing code via WebSocket event: 'whatsapp_pairing_code'
+// Returns immediately, then pushes the code via WebSocket 'whatsapp_pairing_code' event
 router.post('/whatsapp/pair-phone', async (req, res) => {
   const { userId, phoneNumber } = req.body;
   if (!userId || !phoneNumber) return res.status(400).json({ error: 'userId and phoneNumber are required' });
 
   const io = req.app.get('io');
+  const cleanPhone = phoneNumber.replace(/\D/g, '');
+  console.log(`[Integrations] Phone pairing for ${userId} -> ${cleanPhone}`);
+
+  // Respond immediately so the HTTP connection doesn't timeout on Render free tier
+  res.json({ success: true, message: 'Pairing started. Your code will arrive via WebSocket in 10-30s.' });
+
+  // Run pairing in background — push result via WebSocket
+  setImmediate(async () => {
+    try {
+      const { pairingCode } = await connectWhatsAppWithPhone(userId, cleanPhone, io);
+      console.log(`[Integrations] Pairing code for ${userId}: ${pairingCode}`);
+      if (io) io.to(userId).emit('whatsapp_pairing_code', { code: pairingCode });
+    } catch (error) {
+      console.error('[Integrations] Phone pairing failed:', error.message);
+      if (io) io.to(userId).emit('whatsapp_error', { message: error.message });
+    }
+  });
+});
+
+// POST /api/integrations/whatsapp/disconnect
+// Clear active WhatsApp session and database status
+router.post('/whatsapp/disconnect', async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: 'User ID is required' });
+
   try {
-    // Remove all non-digits to sanitize number (handles +91, spaces, dashes)
-    const cleanPhone = phoneNumber.replace(/[\D]/g, '');
-    console.log(`[Integrations] Non-blocking pairing for ${userId} -> ${cleanPhone}`);
+    await disconnectWhatsApp(userId);
+    res.json({ success: true, message: 'WhatsApp session disconnected' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    // Start pairing in background without awaiting — prevents API timeout
-    connectWhatsAppWithPhone(userId, cleanPhone, io).catch(err => {
-      console.error(`[Background Task] WhatsApp pair failure for ${userId}:`, err.message);
-      // Emit error back to client via socket
-      if (io) io.to(userId).emit('whatsapp_status', { status: 'error', message: err.message });
-    });
+// POST /api/integrations/whatsapp/force-reset
+// Aggressively wipes all WhatsApp session caches for a user
+router.post('/whatsapp/force-reset', async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: 'User ID is required' });
 
-    res.json({
-      success: true,
-      message: 'Pairing process started. Please wait 5–15 seconds for your code to appear.'
-    });
-  } catch (error) {
-    console.error('[Integrations] WhatsApp phone pair error:', error.message);
-    res.status(500).json({ error: error.message });
+  try {
+    console.log(`[Integrations] Force-resetting WhatsApp for ${userId}`);
+    await disconnectWhatsApp(userId);
+    res.json({ success: true, message: 'WhatsApp state fully wiped. You can try pairing now.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

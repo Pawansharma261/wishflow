@@ -66,6 +66,23 @@ const Settings = () => {
       } catch (err) { console.error('QR render error:', err); }
     });
 
+    // Pairing code delivered via WebSocket (fire-and-forget pattern)
+    socket.on('whatsapp_pairing_code', (data) => {
+      console.log('[WS] Pairing code received:', data.code);
+      setPairingCode(data.code);
+      setWaStatus('code_ready');
+      setWaLoading(false);
+      setPairingMsg('Enter this code in WhatsApp to link your account.');
+    });
+
+    socket.on('whatsapp_error', (data) => {
+      console.error('[WS] WhatsApp error:', data.message);
+      setPairingMsg('');
+      setWaStatus('disconnected');
+      setWaLoading(false);
+      alert('WhatsApp pairing failed: ' + data.message);
+    });
+
     socket.on('whatsapp_status', (data) => {
       // Don't let background socket events overwrite a visible pairing code or QR
       const cur = waStatusRef.current;
@@ -103,6 +120,7 @@ const Settings = () => {
   };
 
   // ── Phone Number pairing method ───────────────────────────────────────────────
+  // Fire-and-forget: HTTP returns immediately, code arrives via 'whatsapp_pairing_code' WS event
   const connectWithPhone = async () => {
     const cleaned = phoneNumber.replace(/[^0-9]/g, '');
     if (cleaned.length < 10) {
@@ -112,31 +130,23 @@ const Settings = () => {
     setWaLoading(true);
     setWaStatus('connecting');
     setPairingCode('');
-    setPairingMsg('Requesting pairing code from WhatsApp...');
+    setPairingMsg('Connecting to WhatsApp... Your code will appear in 10–30 seconds.');
 
     try {
-      const res = await apiClient.post('/api/integrations/whatsapp/pair-phone', {
+      // This returns immediately — the pairing code will arrive via WebSocket
+      await apiClient.post('/api/integrations/whatsapp/pair-phone', {
         userId,
         phoneNumber: cleaned,
       });
-
-      if (res.error) throw new Error(res.error);
-
-      const code = res.pairingCode;   // ← backend returns { success, pairingCode }
-      if (code) {
-        setPairingCode(code);
-        setWaStatus('code_ready');
-        setPairingMsg('Enter this code in WhatsApp to link your account.');
-      } else {
-        throw new Error('No pairing code returned. Please try again.');
-      }
+      // Keep loading=true and msg visible — code arrives via 'whatsapp_pairing_code' WS event
+      setPairingMsg('⏳ Waiting for code from WhatsApp (10–30s)...');
     } catch (err) {
       setPairingMsg('');
       setWaStatus('disconnected');
-      alert('Failed to get pairing code: ' + (err.message || 'Unknown error'));
-    } finally {
       setWaLoading(false);
+      alert('Failed to start pairing: ' + (err.message || 'Unknown error'));
     }
+    // NOTE: setWaLoading(false) is called inside the 'whatsapp_pairing_code' or 'whatsapp_error' handler
   };
 
   const copyPairingCode = () => {
