@@ -1,13 +1,7 @@
 const { initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
 const { Redis } = require('@upstash/redis');
 
-/**
- * Custom Auth State for Baileys using Upstash Redis
- * Parses and stringifies JSON using Baileys' BufferJSON to handle Buffers properly
- */
 module.exports = async function useRedisAuthState(userId) {
-  // If no Upstash credentials, we can't connect, so throw early or handle.
-  // Actually we should create a Redis client inside if process.env.UPSTASH_REDIS_REST_URL exists
   if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
     throw new Error('Upstash Redis credentials are missing in Environment Variables.');
   }
@@ -18,9 +12,8 @@ module.exports = async function useRedisAuthState(userId) {
   });
 
   const sessionKey = `whatsapp_session:${userId}`;
-  const keysKey = `whatsapp_keys:${userId}`;
+  const keysPrefix = `whatsapp_keys:${userId}:`;   // NOTE: keys are PREFIX:category-id
 
-  // Helper to read data from Redis
   const readData = async (key) => {
     try {
       const data = await redis.get(key);
@@ -30,7 +23,7 @@ module.exports = async function useRedisAuthState(userId) {
       }
       return null;
     } catch (err) {
-      console.error('[RedisAuthState] Error reading data', err);
+      console.error('[RedisAuthState] read error', err);
       return null;
     }
   };
@@ -40,14 +33,34 @@ module.exports = async function useRedisAuthState(userId) {
       const str = JSON.stringify(data, BufferJSON.replacer);
       await redis.set(key, str, { ex: 2592000 });
     } catch (err) {
-      console.error('[RedisAuthState] Error writing data', err);
+      console.error('[RedisAuthState] write error', err);
     }
   };
 
+  // ── Scan + delete all keys matching a prefix (Upstash supports SCAN) ──────
+  const scanAndDelete = async (matchPattern) => {
+    let cursor = 0;
+    let totalDeleted = 0;
+    try {
+      do {
+        const [nextCursor, keys] = await redis.scan(cursor, {
+          match: matchPattern,
+          count: 100,
+        });
+        cursor = Number(nextCursor);
+        if (keys && keys.length > 0) {
+          await redis.del(...keys);
+          totalDeleted += keys.length;
+        }
+      } while (cursor !== 0);
+    } catch (e) {
+      console.error('[RedisAuthState] scanAndDelete error:', e.message);
+    }
+    return totalDeleted;
+  };
+
   let creds = await readData(sessionKey);
-  if (!creds) {
-    creds = initAuthCreds();
-  }
+  if (!creds) creds = initAuthCreds();
 
   return {
     state: {
@@ -57,9 +70,9 @@ module.exports = async function useRedisAuthState(userId) {
           if (!ids || ids.length === 0) return {};
           const data = {};
           try {
-            const allKeys = ids.map(id => `${keysKey}:${type}-${id}`);
+            // Key format: whatsapp_keys:userId:category-id
+            const allKeys = ids.map(id => `${keysPrefix}${type}-${id}`);
             const values = await redis.mget(...allKeys);
-            
             ids.forEach((id, idx) => {
               let value = values[idx];
               if (value) {
@@ -83,42 +96,38 @@ module.exports = async function useRedisAuthState(userId) {
             for (const category in data) {
               for (const id in data[category]) {
                 const value = data[category][id];
-                const key = `${keysKey}:${category}-${id}`;
+                // Key format: whatsapp_keys:userId:category-id
+                const key = `${keysPrefix}${category}-${id}`;
                 if (value) {
-                  const str = JSON.stringify(value, BufferJSON.replacer);
-                  p.set(key, str, { ex: 2592000 });
+                  p.set(key, JSON.stringify(value, BufferJSON.replacer), { ex: 2592000 });
                 } else {
                   p.del(key);
                 }
                 ops++;
               }
             }
-            if (ops > 0) {
-              await p.exec();
-            }
+            if (ops > 0) await p.exec();
           } catch (e) {
             console.error('[RedisAuthState] pipeline set error:', e);
           }
         }
       }
     },
-    saveCreds: () => {
-      return writeData(sessionKey, creds);
-    },
+    saveCreds: () => writeData(sessionKey, creds),
+
     clearState: async () => {
       try {
-        // Delete creds
+        // 1. Delete session creds
         await redis.del(sessionKey);
-        // Delete all signal keys for this user by scanning the keyspace
-        // With Upstash REST, we use SCAN pattern logic:
-        // Since keys follow whatsapp_keys:userId:type-id pattern, delete known types
-        const keyTypes = ['pre-key', 'session', 'sender-key', 'app-state-sync-key',
-                          'app-state-sync-version', 'sender-key-memory', 'signed-pre-key'];
-        const delPromises = keyTypes.map(t => redis.del(`${keysKey}:${t}`));
-        await Promise.allSettled(delPromises);
-        // Reset in-memory creds to fresh so socket gets clean state
+
+        // 2. Delete ALL signal keys using SCAN (keys are keysPrefix + category-id)
+        //    Pattern: whatsapp_keys:userId:*
+        const deleted = await scanAndDelete(`whatsapp_keys:${userId}:*`);
+
+        // 3. Reset in-memory creds so next makeWASocket gets fresh unregistered state
         Object.assign(creds, initAuthCreds());
-        console.log(`[RedisAuthState] Fully cleared session for user ${userId}`);
+
+        console.log(`[RedisAuthState] Cleared session + ${deleted} signal keys for ${userId}`);
       } catch (err) {
         console.error('[RedisAuthState] clearState error:', err);
       }

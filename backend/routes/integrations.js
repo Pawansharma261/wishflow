@@ -65,16 +65,47 @@ router.post('/whatsapp/disconnect', async (req, res) => {
 });
 
 // POST /api/integrations/whatsapp/force-reset
-// Aggressively wipes all WhatsApp session caches for a user
+// Aggressively wipes ALL WhatsApp session data including all signal keys via SCAN
 router.post('/whatsapp/force-reset', async (req, res) => {
   const { userId } = req.body;
   if (!userId) return res.status(400).json({ error: 'User ID is required' });
 
   try {
-    console.log(`[Integrations] Force-resetting WhatsApp for ${userId}`);
-    await disconnectWhatsApp(userId);
-    res.json({ success: true, message: 'WhatsApp state fully wiped. You can try pairing now.' });
+    console.log(`[Integrations] Deep force-reset for ${userId}`);
+
+    // 1. Kill the in-memory socket
+    await disconnectWhatsApp(userId).catch(() => {});
+
+    // 2. Direct Redis SCAN — nukes EVERY key for this user regardless of service-level clearState
+    const { Redis } = require('@upstash/redis');
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+
+    const keysToDelete = [`whatsapp_session:${userId}`];
+
+    // SCAN for all signal keys: whatsapp_keys:userId:*
+    let cursor = 0;
+    let scanned = 0;
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, {
+        match: `whatsapp_keys:${userId}:*`,
+        count: 100,
+      });
+      cursor = Number(nextCursor);
+      if (keys && keys.length > 0) keysToDelete.push(...keys);
+      scanned++;
+    } while (cursor !== 0 && scanned < 20); // safety cap
+
+    if (keysToDelete.length > 0) {
+      await redis.del(...keysToDelete);
+      console.log(`[Integrations] Deleted ${keysToDelete.length} Redis keys for ${userId}`);
+    }
+
+    res.json({ success: true, message: 'WhatsApp state fully wiped. You can try pairing now.', keysDeleted: keysToDelete.length });
   } catch (err) {
+    console.error('[Integrations] force-reset error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
