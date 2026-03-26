@@ -106,8 +106,22 @@ module.exports = async function useRedisAuthState(userId) {
       return writeData(sessionKey, creds);
     },
     clearState: async () => {
-      await redis.del(sessionKey);
-      console.log(`[RedisAuthState] Cleared session for user ${userId}`);
+      try {
+        // Delete creds
+        await redis.del(sessionKey);
+        // Delete all signal keys for this user by scanning the keyspace
+        // With Upstash REST, we use SCAN pattern logic:
+        // Since keys follow whatsapp_keys:userId:type-id pattern, delete known types
+        const keyTypes = ['pre-key', 'session', 'sender-key', 'app-state-sync-key',
+                          'app-state-sync-version', 'sender-key-memory', 'signed-pre-key'];
+        const delPromises = keyTypes.map(t => redis.del(`${keysKey}:${t}`));
+        await Promise.allSettled(delPromises);
+        // Reset in-memory creds to fresh so socket gets clean state
+        Object.assign(creds, initAuthCreds());
+        console.log(`[RedisAuthState] Fully cleared session for user ${userId}`);
+      } catch (err) {
+        console.error('[RedisAuthState] clearState error:', err);
+      }
     }
   };
 };

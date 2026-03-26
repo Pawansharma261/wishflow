@@ -43,9 +43,16 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   }
   connecting.delete(userId);
 
-  const { state, saveCreds, clearState } = await useRedisAuthState(userId);
+  // Step 1: Load state just to get the clearState function, then wipe everything
+  const { clearState } = await useRedisAuthState(userId);
   console.log(`[WhatsApp] Wiping stale state for ${userId}...`);
   await clearState();
+
+  // Step 2: Get a FRESH state (now Redis has no session, so initAuthCreds() is used)
+  const { state, saveCreds } = await useRedisAuthState(userId);
+
+  // Verify state is truly fresh (not registered)
+  console.log(`[WhatsApp] Fresh creds registered: ${state.creds.registered} for ${userId}`);
 
   const { version } = await fetchLatestBaileysVersion();
 
