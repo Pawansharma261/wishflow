@@ -29,7 +29,6 @@ const useRedisAuthState = async (userId) => {
     try {
       const data = await redis.get(key);
       if (!data) return null;
-      // Upstash sometimes returns objects directly if they were stored as JSON
       const raw = typeof data === 'string' ? data : JSON.stringify(data);
       return JSON.parse(raw, reviver);
     } catch (e) {
@@ -50,14 +49,21 @@ const useRedisAuthState = async (userId) => {
   const scanAndDelete = async (pattern) => {
     try {
       let cursor = 0;
+      let limit = 0; // Prevent infinite loops
       do {
-        // Upstash SCAN syntax: redis.scan(cursor, { match, count })
-        const [nextCursor, keys] = await redis.scan(cursor, { match: pattern, count: 100 });
+        // Defensive destructuring for different Upstash versions
+        const result = await redis.scan(cursor, { match: pattern, count: 100 });
+        if (!result) break;
+        
+        const nextCursor = Array.isArray(result) ? result[0] : (result.cursor || result[0]);
+        const keys = Array.isArray(result) ? result[1] : (result.keys || result[1]);
+        
         cursor = nextCursor;
-        if (keys && keys.length > 0) {
+        if (keys && Array.isArray(keys) && keys.length > 0) {
           await redis.del(...keys);
         }
-      } while (cursor !== 0 && cursor !== '0');
+        limit++;
+      } while (cursor !== 0 && cursor !== '0' && limit < 100);
     } catch (e) {
       console.error(`[Redis] Scan error:`, e);
     }
@@ -98,9 +104,11 @@ const useRedisAuthState = async (userId) => {
       await writeData(sessionKey, creds);
     },
     clearState: async () => {
-      await redis.del(sessionKey);
-      await scanAndDelete(`${keysPrefix}*`);
-      Object.assign(creds, initAuthCreds());
+      try {
+        await redis.del(sessionKey);
+        await scanAndDelete(`${keysPrefix}*`);
+        Object.assign(creds, initAuthCreds());
+      } catch (e) {}
     },
   };
 };
