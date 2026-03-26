@@ -34,7 +34,7 @@ const getWhatsAppStatus = (userId) => {
 
 const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-  console.log(`[WA:phone] 📞 Pairing ${userId} -> ${cleanPhone}`);
+  console.log(`[WA:phone] 📞 Linking ${userId} -> ${cleanPhone}`);
 
   const existing = sessions.get(userId);
   if (existing) { try { existing.end(); } catch(e) {} sessions.delete(userId); }
@@ -42,7 +42,7 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   phonePairing.add(userId);
 
   const { state, saveCreds, clearState } = await useRedisAuthState(userId);
-  await clearState(); 
+  await clearState(); // Wipe any bad previous keys
 
   const { version } = await fetchLatestBaileysVersion();
   
@@ -54,51 +54,56 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
     },
     printQRInTerminal: false,
     logger,
-    browser: Browsers.macOS('Chrome'),
+    browser: Browsers.windows('Chrome'), // Standard trusted identity
     syncFullHistory: false,
-    shouldSyncHistoryMessage: () => false, // STRICT: Stop history sync to prevent Render hang
+    shouldSyncHistoryMessage: () => false,
     markOnlineOnConnect: true,
-    connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 20000, // Faster heartbeat to keep Render proxy alive
-    patchMessageBeforeSending: (message) => message,
+    connectTimeoutMs: 120000, // Double timeout for slow Render boot
+    keepAliveIntervalMs: 25000,
   });
 
-  sock.ev.on('creds.update', saveCreds);
+  // Explicit save listener
+  sock.ev.on('creds.update', async () => {
+    console.log(`[WA:phone] 💾 Updating credentials for ${userId}`);
+    await saveCreds();
+  });
 
   return new Promise((resolve, reject) => {
     let pairingRequested = false;
 
-    // Timeout if WhatsApp doesn't respond
     const timeout = setTimeout(() => {
-      if (!pairingRequested) reject(new Error('Pairing timed out.'));
-    }, 60000);
+      if (!pairingRequested) reject(new Error('Pairing timed out. WhatsApp is unresponsive.'));
+    }, 120000);
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect } = update;
-      console.log(`[WA:phone] ${userId} | ${connection || 'pending'}`);
+      console.log(`[WA:phone] ${userId} | ${connection || 'handshaking'}`);
 
       if (!pairingRequested) {
         pairingRequested = true;
-        // 8s settle time — ensures the socket is 100% ready for the pairing request
-        await new Promise(r => setTimeout(r, 8000)); 
+        console.log(`[WA:phone] ⏳ Bridging secure channel (10s)...`);
+        // Increased wait time to 10s to ensure Render CPU stabilizes before heavy crypto request
+        await new Promise(r => setTimeout(r, 10000)); 
         
         try {
-          console.log(`[WA:phone] 📲 Requesting Code for ${userId}...`);
+          console.log(`[WA:phone] 📲 Generating Code...`);
           const rawCode = await sock.requestPairingCode(cleanPhone);
           const formatted = String(rawCode).replace(/(.{4})(.{4})/, '$1-$2');
           
           if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
+          console.log(`[WA:phone] ✅ PAIRING CODE: ${formatted}`);
+          
           clearTimeout(timeout);
           resolve({ pairingCode: formatted });
         } catch (err) {
-          console.error(`[WA:phone] FAIL:`, err.message);
+          console.error(`[WA:phone] Failed to request code:`, err.message);
           phonePairing.delete(userId);
           reject(err);
         }
       }
 
       if (connection === 'open') {
-        console.log(`[WA:phone] ✅ LINKED! ${userId}`);
+        console.log(`[WA:phone] 🎉 PAIRING COMPLETE for ${userId}`);
         phonePairing.delete(userId);
         sessions.set(userId, sock);
         await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
@@ -136,13 +141,13 @@ const connectWhatsApp = async (userId, io) => {
         },
         printQRInTerminal: false,
         logger,
-        browser: Browsers.macOS('Chrome'),
+        browser: Browsers.windows('Chrome'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
-        keepAliveIntervalMs: 20000,
+        keepAliveIntervalMs: 30000,
       });
 
-      sock.ev.on('creds.update', saveCreds);
+      sock.ev.on('creds.update', () => saveCreds());
       sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr && io) { 
@@ -170,7 +175,9 @@ const connectWhatsApp = async (userId, io) => {
     })();
     connecting.set(userId, p);
     return p;
-  } catch(e) {}
+  } catch(e) {
+    console.error(`[WA] Reconnect error:`, e.message);
+  }
 };
 
 const sendWhatsAppWish = async (userId, targetPhone, text) => {
