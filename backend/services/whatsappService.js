@@ -64,9 +64,13 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
       const { connection, lastDisconnect } = update;
       console.log(`[WA:phone] update for ${userId}: conn=${connection}`);
 
-      // Attempt to get the pairing code on the very first update (socket is alive)
-      if (!codeFetched && connection !== 'open' && connection !== 'close') {
+      // connection===undefined means WA server hello is done and socket is ready
+      // but NOT yet established (open). This is the correct moment for requestPairingCode.
+      // We skip 'connecting' (too early) and 'open'/'close' (too late/done).
+      if (!codeFetched && connection === undefined) {
         codeFetched = true;
+        // Small delay to let WA complete its initial server-hello exchange
+        await new Promise(r => setTimeout(r, 1500));
         try {
           console.log(`[WA:phone] Calling requestPairingCode(${cleanPhone})...`);
           const rawCode = await sock.requestPairingCode(cleanPhone);
