@@ -2,7 +2,6 @@ const {
   default: makeWASocket, 
   DisconnectReason, 
   Browsers, 
-  fetchLatestBaileysVersion, 
   makeCacheableSignalKeyStore 
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
@@ -44,17 +43,15 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   const { state, saveCreds, clearState } = await useRedisAuthState(userId);
   await clearState(); 
 
-  const { version } = await fetchLatestBaileysVersion();
-
   const sock = makeWASocket({
-    version,
+    version: [2, 3000, 1015901307], // Explicitly stable version
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     printQRInTerminal: false,
     logger,
-    browser: Browsers.macOS('Desktop'),
+    browser: ['Ubuntu', 'Chrome', '20.0.04'], // Standard pairing string
     syncFullHistory: false,
     connectTimeoutMs: 60000,
     keepAliveIntervalMs: 30000,
@@ -65,21 +62,27 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   return new Promise((resolve, reject) => {
     let pairingRequested = false;
 
+    // Auto-resolve after 90s if it's stuck
+    const timeout = setTimeout(() => {
+      if (!pairingRequested) reject(new Error('Pairing timed out.'));
+    }, 90000);
+
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect } = update;
       console.log(`[WA:phone] ${userId} | connection=${connection}`);
 
       if (!pairingRequested && connection === undefined) {
         pairingRequested = true;
-        await new Promise(r => setTimeout(r, 2500)); 
+        await new Promise(r => setTimeout(r, 3000)); // Let it stabilize
         try {
           console.log(`[WA:phone] Requesting code for ${userId}`);
           const rawCode = await sock.requestPairingCode(cleanPhone);
           const formatted = String(rawCode).replace(/(.{4})(.{4})/, '$1-$2');
           if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
+          clearTimeout(timeout);
           resolve({ pairingCode: formatted });
         } catch (err) {
-          console.error(`[WA:phone] requestPairingCode error:`, err.message);
+          console.error(`[WA:phone] pair error:`, err.message);
           phonePairing.delete(userId);
           reject(err);
         }
@@ -114,16 +117,15 @@ const connectWhatsApp = async (userId, io) => {
   try {
     const p = (async () => {
       const { state, saveCreds, clearState } = await useRedisAuthState(userId);
-      const { version } = await fetchLatestBaileysVersion();
       const sock = makeWASocket({
-        version,
+        version: [2, 3000, 1015901307],
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
         logger,
-        browser: Browsers.macOS('Desktop'),
+        browser: ['Ubuntu', 'Chrome', '20.0.04'],
         syncFullHistory: false,
         keepAliveIntervalMs: 30000,
       });
