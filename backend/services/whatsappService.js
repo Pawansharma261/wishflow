@@ -81,34 +81,34 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
     }, 60000);
 
     sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, isNewLogin } = update;
-      console.log(`[WA:phone] ${userId} | connection=${connection} isNewLogin=${isNewLogin}`);
+      const { connection, lastDisconnect } = update;
+      console.log(`[WA:phone] ${userId} | connection=${connection}`);
 
-      // ── Request pairing code as soon as WhatsApp says 'connecting' ─────────
-      // This is the canonical Baileys pattern: call requestPairingCode() early,
-      // it internally waits for ws.isOpen before sending the request.
-      if (!pairingRequested && !sock.authState.creds.registered) {
+      // ── connection===undefined fires after WA server-hello handshake is complete
+      //    (AFTER 'connecting', BEFORE 'open'). This is the correct moment to call
+      //    requestPairingCode. Calling during 'connecting' causes "Connection Closed".
+      if (!pairingRequested && connection === undefined) {
         pairingRequested = true;
+        // 1.5s delay lets WA complete its internal key-exchange before we request
+        await new Promise(r => setTimeout(r, 1500));
         try {
           console.log(`[WA:phone] requestPairingCode('${cleanPhone}')`);
           const rawCode = await sock.requestPairingCode(cleanPhone);
-          if (!rawCode) throw new Error('Empty code returned');
-          const code = String(rawCode).replace(/(.{4})(.{4})/, '$1-$2'); // XXXX-XXXX
+          if (!rawCode) throw new Error('Empty code returned by WhatsApp');
+          const code = String(rawCode).replace(/(.{4})(.{4})/, '$1-$2');
           console.log(`[WA:phone] Code for ${userId}: ${code}`);
           clearTimeout(timeout);
-          // Emit via WebSocket so frontend gets it (fire-and-forget route)
           if (io) io.to(userId).emit('whatsapp_pairing_code', { code });
-          resolve({ pairingCode: code });
+          return resolve({ pairingCode: code });
         } catch (err) {
           console.error(`[WA:phone] requestPairingCode error:`, err.message);
           clearTimeout(timeout);
           phonePairing.delete(userId);
           try { sock.end(); } catch(e) {}
           sessions.delete(userId);
-          if (io) io.to(userId).emit('whatsapp_error', { message: err.message });
-          reject(err);
+          if (io) io.to(userId).emit('whatsapp_error', { message: 'Failed to get code: ' + err.message });
+          return reject(err);
         }
-        return;  // don't process other updates in this tick
       }
 
       if (connection === 'open') {
