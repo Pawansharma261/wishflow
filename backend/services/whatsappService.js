@@ -9,25 +9,6 @@ const pino = require('pino');
 const useRedisAuthState = require('./useRedisAuthState');
 const supabaseAdmin = require('../db/supabaseAdmin');
 
-const logBuffer = [];
-const addLog = (msg) => {
-  const timestamp = new Date().toISOString();
-  logBuffer.push(`[${timestamp}] ${msg}`);
-  if (logBuffer.length > 200) logBuffer.shift();
-};
-
-// Override console to buffer logs
-const originalLog = console.log;
-const originalError = console.error;
-console.log = (...args) => {
-  addLog(args.join(' '));
-  originalLog.apply(console, args);
-};
-console.error = (...args) => {
-  addLog(args.join(' error: ') + (args[1]?.stack || ''));
-  originalError.apply(console, args);
-};
-
 const sessions        = new Map();
 const connecting      = new Map();
 const phonePairing    = new Set();  // users currently in phone-pairing mode (don't QR-reconnect)
@@ -76,12 +57,12 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
     },
     printQRInTerminal: false,
     logger,
-    browser: Browsers.macOS('Desktop'),         // stable browser fingerprint
+    browser: Browsers.ubuntu('Chrome'),         // stable browser fingerprint
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,
-    connectTimeoutMs: 90000,
-    defaultQueryTimeoutMs: 90000,
-    keepAliveIntervalMs: 30000,                  // 30s is more stable for Render's gateway
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000,                  // ping WA every 10s to stay connected
   });
 
   sock.ev.on('creds.update', () => saveCreds());
@@ -143,19 +124,12 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
         // ── CRITICAL: In phone-pairing mode, NEVER auto-reconnect in QR mode.
         // The noise keys must remain intact for WhatsApp to complete the handshake.
         if (phonePairing.has(userId)) {
-          console.log(`[WA:phone] Connection closed DURING pairing for ${userId} (code=${code})`);
-          // We WAIT 30 seconds before declaring failure.
-          // This allows the user to finish typing the code if it was just a network blip.
-          setTimeout(() => {
-            if (phonePairing.has(userId) && !sessions.get(userId)?.user) {
-              console.log(`[WA:phone] Declaring pairing failure after grace period for ${userId}`);
-              phonePairing.delete(userId);
-              sessions.delete(userId);
-              if (io) io.to(userId).emit('whatsapp_error', {
-                message: 'Connection timed out. If your phone didn\'t link, please try one more time.'
-              });
-            }
-          }, 45000); 
+          console.log(`[WA:phone] Connection closed DURING pairing — NOT reconnecting as QR`);
+          phonePairing.delete(userId);
+          sessions.delete(userId);
+          if (io) io.to(userId).emit('whatsapp_error', {
+            message: 'Connection lost during pairing. Click "Get New Code" to retry.'
+          });
         } else if (code !== DisconnectReason.loggedOut) {
           // Normal post-link disconnect — safe to reconnect in QR mode
           sessions.delete(userId);
@@ -252,11 +226,4 @@ const disconnectWhatsApp = async (userId) => {
   await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
 };
 
-module.exports = {
-  connectWhatsApp,
-  connectWhatsAppWithPhone,
-  sendWhatsAppWish,
-  disconnectWhatsApp,
-  getWhatsAppStatus,
-  getLogs: () => logBuffer
-};
+module.exports = { connectWhatsApp, connectWhatsAppWithPhone, sendWhatsAppWish, disconnectWhatsApp, getWhatsAppStatus };
