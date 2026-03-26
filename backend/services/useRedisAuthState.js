@@ -26,27 +26,41 @@ const useRedisAuthState = async (userId) => {
   const keysPrefix = `whatsapp_keys:${userId}:`;
 
   const readData = async (key) => {
-    const data = await redis.get(key);
-    if (!data) return null;
-    // If it's already an object (upstash auto-parse), we need to manually revive buffers
-    const obj = typeof data === 'string' ? JSON.parse(data, reviver) : JSON.parse(JSON.stringify(data), reviver);
-    return obj;
+    try {
+      const data = await redis.get(key);
+      if (!data) return null;
+      // Upstash sometimes returns objects directly if they were stored as JSON
+      const raw = typeof data === 'string' ? data : JSON.stringify(data);
+      return JSON.parse(raw, reviver);
+    } catch (e) {
+      console.error(`[Redis] Read error for ${key}:`, e);
+      return null;
+    }
   };
 
   const writeData = async (key, data) => {
-    const json = JSON.stringify(data, replacer);
-    await redis.set(key, json);
+    try {
+      const json = JSON.stringify(data, replacer);
+      await redis.set(key, json);
+    } catch (e) {
+      console.error(`[Redis] Write error for ${key}:`, e);
+    }
   };
 
   const scanAndDelete = async (pattern) => {
-    let cursor = '0';
-    do {
-      const [_cursor, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-      cursor = _cursor;
-      if (keys && keys.length > 0) {
-        await redis.del(...keys);
-      }
-    } while (cursor !== '0');
+    try {
+      let cursor = 0;
+      do {
+        // Upstash SCAN syntax: redis.scan(cursor, { match, count })
+        const [nextCursor, keys] = await redis.scan(cursor, { match: pattern, count: 100 });
+        cursor = nextCursor;
+        if (keys && keys.length > 0) {
+          await redis.del(...keys);
+        }
+      } while (cursor !== 0 && cursor !== '0');
+    } catch (e) {
+      console.error(`[Redis] Scan error:`, e);
+    }
   };
 
   const loadedCreds = await readData(sessionKey);
