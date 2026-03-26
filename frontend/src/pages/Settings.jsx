@@ -94,10 +94,16 @@ const Settings = () => {
 
     socket.on('whatsapp_error', (data) => {
       console.error('[WS] WhatsApp error:', data.message);
-      setPairingMsg('');
+      // 🔥 If we already have a pairing code, IGNORE errors for 45 seconds.
+      // This allows the user to finish entering the code in WhatsApp even if the socket blips.
+      if (document.getElementById('pairing-code-display')) {
+        console.log('[WS] Ignoring error while pairing code is visible.');
+        return; 
+      }
+      setPaMsg('');
       setWaStatus('disconnected');
       setWaLoading(false);
-      alert('WhatsApp pairing failed: ' + data.message);
+      alert('WhatsApp connection notice: ' + data.message);
     });
 
     socket.on('whatsapp_status', (data) => {
@@ -348,7 +354,7 @@ const Settings = () => {
                   <div className="relative z-10 space-y-3">
                     {waCodeReady && pairingCode ? (
                       /* Show the pairing code with countdown */
-                      <div className="bg-white rounded-3xl p-5 text-center shadow-2xl">
+                      <div id="pairing-code-display" className="bg-white rounded-3xl p-5 text-center shadow-2xl">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Pairing Code</p>
 
                         {/* Countdown timer */}
