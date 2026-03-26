@@ -1,9 +1,6 @@
 const { initAuthCreds } = require('@whiskeysockets/baileys');
 const redis = require('../lib/redis');
 
-/**
- * Binary-safe JSON helpers for crypto Buffers.
- */
 const replacer = (key, value) => {
   if (value && value.type === 'Buffer' && Array.isArray(value.data)) {
     return { type: 'Buffer', data: Buffer.from(value.data).toString('base64') };
@@ -31,42 +28,14 @@ const useRedisAuthState = async (userId) => {
       if (!data) return null;
       const raw = typeof data === 'string' ? data : JSON.stringify(data);
       return JSON.parse(raw, reviver);
-    } catch (e) {
-      console.error(`[Redis] Read error for ${key}:`, e);
-      return null;
-    }
+    } catch (e) { return null; }
   };
 
   const writeData = async (key, data) => {
     try {
       const json = JSON.stringify(data, replacer);
       await redis.set(key, json);
-    } catch (e) {
-      console.error(`[Redis] Write error for ${key}:`, e);
-    }
-  };
-
-  const scanAndDelete = async (pattern) => {
-    try {
-      let cursor = 0;
-      let limit = 0; // Prevent infinite loops
-      do {
-        // Defensive destructuring for different Upstash versions
-        const result = await redis.scan(cursor, { match: pattern, count: 100 });
-        if (!result) break;
-        
-        const nextCursor = Array.isArray(result) ? result[0] : (result.cursor || result[0]);
-        const keys = Array.isArray(result) ? result[1] : (result.keys || result[1]);
-        
-        cursor = nextCursor;
-        if (keys && Array.isArray(keys) && keys.length > 0) {
-          await redis.del(...keys);
-        }
-        limit++;
-      } while (cursor !== 0 && cursor !== '0' && limit < 100);
-    } catch (e) {
-      console.error(`[Redis] Scan error:`, e);
-    }
+    } catch (e) {}
   };
 
   const loadedCreds = await readData(sessionKey);
@@ -106,7 +75,10 @@ const useRedisAuthState = async (userId) => {
     clearState: async () => {
       try {
         await redis.del(sessionKey);
-        await scanAndDelete(`${keysPrefix}*`);
+        const allKeys = await redis.keys(`${keysPrefix}*`);
+        if (allKeys && allKeys.length > 0) {
+          await redis.del(...allKeys);
+        }
         Object.assign(creds, initAuthCreds());
       } catch (e) {}
     },
