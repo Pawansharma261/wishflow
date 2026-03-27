@@ -21,16 +21,32 @@ const App = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // SECURITY GUARD: Ensure we don't hang forever if Supabase is slow or environment keys are missing
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.warn('[AUTH] Session check timed out. Falling back to public view.');
+        setLoading(false);
+      }
+    }, 4500);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
+      clearTimeout(timeout);
+    }).catch(err => {
+      console.error('[AUTH] Failed to get session:', err);
+      setLoading(false); // Still show the app (landing) even if auth fails
+      clearTimeout(timeout);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   if (loading) {
