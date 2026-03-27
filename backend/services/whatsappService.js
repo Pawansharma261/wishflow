@@ -3,7 +3,6 @@ const {
   DisconnectReason, 
   Browsers, 
   makeCacheableSignalKeyStore,
-  fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const { useRedisAuthState, clearWhatsAppState } = require('./useRedisAuthState');
@@ -32,35 +31,35 @@ const getWhatsAppStatus = (userId) => {
   return 'disconnected';
 };
 
+/**
+ * connectWhatsAppWithPhone - DEFINITIVE VERSION
+ * Uses session isolation to prevent Redis key clashing.
+ */
 const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-  console.log(`[WA:phone] 📞 Initializing fresh pairing link for ${userId}`);
+  console.log(`[WA:phone] 📞 Isolated Pairing session started for ${userId}`);
 
   const existing = sessions.get(userId);
   if (existing) { try { existing.end(); } catch(e) {} sessions.delete(userId); }
   connecting.delete(userId);
   phonePairing.add(userId);
 
-  // Aggressive wipe to break 405 locks
+  // 1. FRESH START with Atomic Wipe
   await clearWhatsAppState(userId);
   const { state, saveCreds } = await useRedisAuthState(userId);
 
-  // 1. Fetch LATEST version dynamically (avoids 405 protocol mismatches)
-  const { version } = await fetchLatestBaileysVersion();
-  
+  // 2. CONSTRUCT SOCKET with stable protocol
   const sock = makeWASocket({
-    version,
+    version: [2, 3000, 1015901307],
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     logger,
-    browser: Browsers.macOS('Chrome'), // Highest acceptance browser
+    browser: Browsers.macOS('Desktop'),
     syncFullHistory: false,
     shouldSyncHistoryMessage: () => false,
     markOnlineOnConnect: true,
-    connectTimeoutMs: 120000,
-    keepAliveIntervalMs: 25000,
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -68,34 +67,28 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   return new Promise((resolve, reject) => {
     let resolved = false;
 
-    // FIX: 3-second settle time before pairing request
-    // This ensures the socket has fully initialized its background identity
+    // FIX: Ultra-early trigger (1.5s) to define identity before any QR generation
     setTimeout(async () => {
         try {
-            console.log(`[WA:phone] 🔑 Requesting 8-digit code...`);
+            console.log(`[WA:phone] 📲 Requesting 8-digit code...`);
             const code = await sock.requestPairingCode(cleanPhone);
             const raw = String(code).replace(/-/g, '');
             const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
             
             if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
-            console.log(`[WA:phone] ✅ Code: ${formatted}`);
+            console.log(`[WA:phone] ✅ PAIRING CODE DELIVERED: ${formatted}`);
         } catch (e) {
-            console.error(`[WA:phone] Pairing Req Failed:`, e.message);
-            // 405 errors are caught here
-            if (!resolved) {
-                resolved = true;
-                reject(e);
-                phonePairing.delete(userId);
-            }
+            console.error(`[WA:phone] ❌ REQ ERROR:`, e.message);
+            if (!resolved) { resolved = true; reject(e); }
         }
-    }, 3000);
+    }, 1500);
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect } = update;
-      console.log(`[WA:phone] ${userId} | ${connection || 'handshaking'}`);
+      console.log(`[WA:phone] ${userId} | ${connection || 'linking'}`);
 
       if (connection === 'open') {
-        console.log(`[WA:phone] 🎉 PAIRING SUCCESS`);
+        console.log(`[WA:phone] 🎉 PAIRING COMPLETE`);
         resolved = true;
         phonePairing.delete(userId);
         sessions.set(userId, sock);
@@ -126,7 +119,7 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
       }
     });
 
-    // Initial Resolve for API response timing
+    // Initial API resolve
     setTimeout(() => { if(!resolved && !phonePairing.has(userId)) resolve({ pending: true }); }, 15000);
   });
 };
@@ -135,28 +128,31 @@ const connectWhatsApp = async (userId, io) => {
   const existing = sessions.get(userId);
   if (existing) { try { existing.end(); } catch(e) {} sessions.delete(userId); }
   connecting.delete(userId);
+
   try {
     const p = (async () => {
       const { state, saveCreds } = await useRedisAuthState(userId);
-      const { version } = await fetchLatestBaileysVersion();
       const sock = makeWASocket({
-        version,
+        version: [2, 3000, 1015901307],
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         logger,
-        browser: Browsers.macOS('Chrome'),
+        browser: Browsers.macOS('Desktop'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
       });
       sock.ev.on('creds.update', saveCreds);
-      sock.ev.on('connection.update', (update) => {
-        const { connection, qr } = update;
-        if (qr && io) { io.to(userId).emit('whatsapp_status', { status: 'qr_ready' }); io.to(userId).emit('whatsapp_qr', { qr }); }
+      sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        if (qr && io) { 
+          io.to(userId).emit('whatsapp_status', { status: 'qr_ready' }); 
+          io.to(userId).emit('whatsapp_qr', { qr }); 
+        }
         if (connection === 'open') {
           sessions.set(userId, sock);
-          supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
+          await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
           if (io) io.to(userId).emit('whatsapp_status', { status: 'connected' });
         } else if (connection === 'close') {
           sessions.delete(userId);
