@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Sparkles, Users, Check, Wand2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import Confetti from 'react-confetti';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Contacts as CapacitorContacts } from '@capacitor-community/contacts';
+import { io } from 'socket.io-client';
 
 const occasions = [
   { id: 'birthday', name: 'Birthday', emoji: '🎂' },
@@ -19,6 +20,7 @@ const occasions = [
 
 const Scheduler = () => {
   const navigate = useNavigate();
+  const socketRef = useRef(null);
   const [step, setStep] = useState(1);
   const [contacts, setContacts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,14 +41,56 @@ const Scheduler = () => {
 
   useEffect(() => {
     fetchData();
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
   }, []);
+
+  const setupSocket = async (userId) => {
+    if (socketRef.current) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
+    const socket = io(BACKEND_URL, { 
+      transports: ['websocket'], 
+      upgrade: false 
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      // AUTH HARDENING: Register with session token
+      socket.emit('register', { userId, token: session.access_token });
+    });
+
+    socket.on('whatsapp_status', (data) => {
+      console.log('[WS:MobileScheduler] Status:', data.status);
+      
+      // STABILITY FIX: Keep 'connected' status stable during transient blips
+      if (data.status === 'connected') {
+        setProfile(prev => ({ ...prev, whatsapp_connected: true }));
+      } else if (data.status === 'disconnected') {
+        const logoutReasons = [401, '401', 'loggedOut'];
+        // Only flip to offline if it's an actual logout/disconnect, not just a minor reset
+        if (logoutReasons.includes(data.reason)) {
+           setProfile(prev => ({ ...prev, whatsapp_connected: false }));
+        }
+      }
+    });
+  };
   
   const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Setup realtime status sync
+    setupSocket(user.id);
+
     const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
     if (userData) setProfile(userData);
 
-    const { data } = await supabase.from('contacts').select('*').order('name');
+    // FIX: Scope contacts to current user
+    const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
     if (data) setContacts(data);
     setLoading(false);
   };
