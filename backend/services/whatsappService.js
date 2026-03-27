@@ -109,15 +109,16 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
         const credsRegistered = !!state?.creds?.registered;
 
-        // TERMINAL FAILURE: Explicit logout or missing credentials
-        if (isLoggedOut || !credsRegistered) {
-           console.log(`[WA:iron] 🚨 TERMINAL DISCONNECT for ${userId} (Reason: ${statusCode})`);
+        // TERMINAL FAILURE: Only if explicitly logged out by user. 
+        // We do NOT mark as disconnected for transient errors or missing creds.
+        if (isLoggedOut) {
+           console.log(`[WA:iron] 🚨 EXPLICIT DISCONNECT for ${userId}`);
            await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
            if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: 401 });
            
            if (!resolved) {
              resolved = true;
-             reject(new Error(`Link failed [Logged Out]`));
+             reject(new Error(`Link failed [User Logged Out]`));
            }
            sessions.delete(userId);
            phonePairing.delete(userId);

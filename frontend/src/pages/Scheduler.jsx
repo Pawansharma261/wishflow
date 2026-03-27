@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Sparkles, Calendar, MessageSquare, ChevronRight, ChevronLeft, Check, Wand2 } from 'lucide-react';
+import { Sparkles, Calendar, MessageSquare, ChevronRight, ChevronLeft, Check, Wand2, Paperclip, X, RefreshCw } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import Confetti from 'react-confetti';
 import { io } from 'socket.io-client';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { uploadMedia } from '../lib/storage';
 
 const occasions = [
   { id: 'birthday', name: 'Birthday', emoji: '🎂' },
@@ -20,11 +21,13 @@ const occasions = [
 const Scheduler = () => {
   const navigate = useNavigate();
   const socketRef = useRef(null);
+  const fileInputRef = useRef(null);
   const [userId, setUserId] = useState(null);
   const [step, setStep] = useState(1);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [profile, setProfile] = useState({ whatsapp_connected: false, instagram_access_token: null });
 
   const [formData, setFormData] = useState({
@@ -102,6 +105,21 @@ const Scheduler = () => {
     const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id);
     if (data) setContacts(data);
     setLoading(false);
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const url = await uploadMedia(file);
+      setFormData(prev => ({ ...prev, media_url: url }));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const suggestMessage = () => {
@@ -258,20 +276,46 @@ const Scheduler = () => {
             />
             
             <div className="pt-2 animate-fade-in">
-              <label className="text-xs font-black text-slate-400 block mb-3 px-2 uppercase tracking-[0.2em]">Add Media (Optional Image URL)</label>
-              <div className="relative group">
-                <input 
-                  type="url" 
-                  className="input-field h-14 pl-12 pr-6 text-sm font-medium focus:ring-4 focus:ring-brand-rose/10 transition-all"
-                  placeholder="https://example.com/birthday-card.jpg"
-                  value={formData.media_url}
-                  onChange={e => setFormData({...formData, media_url: e.target.value})}
-                />
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-rose transition-colors">
-                  <Sparkles size={18} />
+              <label className="text-xs font-black text-slate-400 block mb-3 px-2 uppercase tracking-[0.2em]">Add Media (Optional Upload)</label>
+              
+              <input 
+                type="file" 
+                className="hidden" 
+                ref={fileInputRef} 
+                accept="image/*" 
+                onChange={handleFileUpload}
+              />
+
+              {formData.media_url ? (
+                <div className="relative group rounded-3xl overflow-hidden border-2 border-brand-rose/30 h-48">
+                  <img src={formData.media_url} className="w-full h-full object-cover" alt="Selected media" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => setFormData({...formData, media_url: ''})}
+                      className="bg-white text-brand-rose p-3 rounded-2xl font-black flex items-center space-x-2 active:scale-95 transition-all text-xs uppercase"
+                    >
+                      <X size={16} />
+                      <span>Remove Media</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-3 px-2 font-bold uppercase tracking-widest">When media is provided, we send it as an image with your text as the caption.</p>
+              ) : (
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-full h-24 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 hover:border-brand-rose/30 hover:bg-brand-rose/5 transition-all group"
+                >
+                  {uploading ? (
+                    <RefreshCw size={24} className="animate-spin text-brand-rose" />
+                  ) : (
+                    <>
+                      <Paperclip size={24} className="mb-2 group-hover:text-brand-rose transition-colors" />
+                      <span className="text-[10px] font-black uppercase tracking-widest leading-none">Pick Local Image</span>
+                    </>
+                  )}
+                </button>
+              )}
+              <p className="text-[10px] text-slate-400 mt-3 px-2 font-bold uppercase tracking-widest leading-relaxed">Images make wishes 4x more memorable. Select one from your drive!</p>
             </div>
           </div>
         )}
@@ -385,3 +429,4 @@ const Scheduler = () => {
 };
 
 export default Scheduler;
+

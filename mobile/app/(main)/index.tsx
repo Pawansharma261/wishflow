@@ -1,11 +1,14 @@
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Alert, Image, FlatList } from 'react-native';
 import { supabase } from '../../src/lib/supabaseClient';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Users, Send, Clock, TrendingUp, ChevronRight, Gift, Sparkles } from 'lucide-react-native';
+import { Users, Send, Clock, TrendingUp, ChevronRight, Gift, Sparkles, Image as ImageIcon, X, Check, Search, Globe, UserCheck, RefreshCw } from 'lucide-react-native';
 import { format, differenceInDays, addYears, isBefore } from 'date-fns';
 import { Link, useRouter } from 'expo-router';
 import { io } from 'socket.io-client';
+import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
+import { uploadMedia } from '../../src/lib/storage';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
 
@@ -23,7 +26,15 @@ export default function Dashboard() {
   const [upcomingWishes, setUpcomingWishes] = useState<any[]>([]);
   const [radarEvent, setRadarEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState({ whatsapp_connected: false, has_instagram: false });
+  const [profile, setProfile] = useState({ id: '', whatsapp_connected: false, has_instagram: false });
+  const [allContacts, setAllContacts] = useState<any[]>([]);
+  
+  // Status Hub State
+  const [statusDraft, setStatusDraft] = useState({ message: '', media_url: '', recipients: [] as string[] });
+  const [isPosting, setIsPosting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showContactPicker, setShowContactPicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -54,29 +65,28 @@ export default function Dashboard() {
         return;
       }
 
-      // Safe fetch user data. .single() can throw if no rows.
-      try {
-        const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
-        if (userData) {
-          setProfile({ whatsapp_connected: userData.whatsapp_connected, has_instagram: !!userData.instagram_access_token });
-        }
-      } catch (userErr) {
-        console.warn('User profile not created yet.', userErr);
+      // Profile
+      const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
+      if (userData) {
+        setProfile({ id: userData.id, whatsapp_connected: userData.whatsapp_connected, has_instagram: !!userData.instagram_access_token });
       }
 
+      // Stats & Upcoming
       const { count: contactsCount } = await supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
-      
+      const { data: contacts } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
+      if (contacts) setAllContacts(contacts);
+
       const { data: wishes } = await supabase.from('wishes').select('*, contacts(name)').eq('user_id', user.id);
       const sent = wishes?.filter((w: any) => w.status === 'sent').length || 0;
       const pending = wishes?.filter((w: any) => w.status === 'pending').length || 0;
       setStats({ totalContacts: contactsCount || 0, sentWishes: sent, pendingWishes: pending });
       
       const upcoming = wishes?.filter((w: any) => w.status === 'pending')
-        .sort((a: any, b: any) => new Date(a.scheduled_datetime).getTime() - new Date(b.scheduled_datetime).getTime())
+        .sort((a: any, b: any) => new Date(a.scheduled_for || a.scheduled_datetime).getTime() - new Date(b.scheduled_for || b.scheduled_datetime).getTime())
         .slice(0, 3) || [];
       setUpcomingWishes(upcoming);
       
-      const { data: contacts } = await supabase.from('contacts').select('name, birthday, anniversary').eq('user_id', user.id);
+      // Radar
       let soonestEvent = null; let soonestDays = Infinity;
       for (const c of (contacts || [])) {
         const bday = getNextOccurrence(c.birthday); const anni = getNextOccurrence(c.anniversary);
@@ -88,10 +98,89 @@ export default function Dashboard() {
     } catch (e: any) {
       console.warn('Dashboard Fetch Error:', e);
     } finally {
-      // Vital: GUARANTEE the loading spinner disappears no matter what happens
       setLoading(false);
     }
   };
+
+  const handlePickImage = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+       Alert.alert('Permission Denied', 'WishFlow needs gallery access to upload media.');
+       return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setUploading(true);
+      try {
+        const url = await uploadMedia(result.assets[0].uri);
+        setStatusDraft(prev => ({ ...prev, media_url: url }));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (err: any) {
+        Alert.alert('Upload Failed', err.message);
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
+  const handlePostStatus = async () => {
+    if (!statusDraft.message && !statusDraft.media_url) return;
+    if (!profile.whatsapp_connected) {
+       Alert.alert('WhatsApp Offline', 'Please connect your WhatsApp in Settings first.');
+       return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setIsPosting(true);
+    try {
+      const resp = await fetch(`${BACKEND_URL}/api/whatsapp/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: profile.id,
+          message: statusDraft.message,
+          mediaUrl: statusDraft.media_url,
+          recipients: statusDraft.recipients.length > 0 ? statusDraft.recipients : null // null means broadcast
+        })
+      });
+
+      if (resp.ok) {
+        setStatusDraft({ message: '', media_url: '', recipients: [] });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Success!', statusDraft.recipients.length > 0 ? 'Messages sent to selected contacts.' : 'Status broadcasted successfully.');
+      } else {
+        const err = await resp.json();
+        throw new Error(err.message || 'Failed to post');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const toggleRecipient = (phone: string) => {
+    Haptics.selectionAsync();
+    setStatusDraft(prev => ({
+      ...prev,
+      recipients: prev.recipients.includes(phone)
+        ? prev.recipients.filter(p => p !== phone)
+        : [...prev.recipients, phone]
+    }));
+  };
+
+  const filteredContacts = allContacts.filter(c => 
+    c.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    c.phone_number?.includes(searchQuery) ||
+    c.phone?.includes(searchQuery)
+  );
 
   const occasionEmoji: Record<string, string> = { birthday: '🎂', christmas: '🎄', diwali: '🪔', valentine: '💝', eid: '🌙', holi: '🌈', new_year: '🎆', custom: '✨' };
 
@@ -112,90 +201,200 @@ export default function Dashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Connection Status Tiles */}
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-          <TouchableOpacity onPress={() => router.push('/settings')} style={{ flex: 1, backgroundColor: profile.whatsapp_connected ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: profile.whatsapp_connected ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.1)' }}>
-            <Send size={18} color={profile.whatsapp_connected ? '#4ade80' : 'rgba(255,255,255,0.4)'} />
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: '900', marginTop: 10, textTransform: 'uppercase', letterSpacing: 1 }}>WhatsApp</Text>
-            <Text style={{ color: profile.whatsapp_connected ? '#4ade80' : 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '900' }}>{profile.whatsapp_connected ? 'CONNECTED' : 'OFFLINE'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/settings')} style={{ flex: 1, backgroundColor: profile.has_instagram ? 'rgba(236,72,153,0.3)' : 'rgba(255,255,255,0.06)', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: profile.has_instagram ? 'rgba(236,72,153,0.5)' : 'rgba(255,255,255,0.1)' }}>
-            <TrendingUp size={18} color={profile.has_instagram ? '#f472b6' : 'rgba(255,255,255,0.4)'} />
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: '900', marginTop: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Instagram</Text>
-            <Text style={{ color: profile.has_instagram ? '#f472b6' : 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '900' }}>{profile.has_instagram ? 'CONNECTED' : 'OFFLINE'}</Text>
+        {/* CONNECTION TILES (With Refresh) */}
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 24 }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+             <TouchableOpacity onPress={() => router.push('/settings')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: profile.whatsapp_connected ? '#22c55e' : '#ef4444' }} />
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>WhatsApp</Text>
+             </TouchableOpacity>
+             <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); fetchDashboardData(); }} style={{ padding: 4 }}>
+                <RefreshCw size={12} color="rgba(255,255,255,0.4)" />
+             </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+             <TouchableOpacity onPress={() => router.push('/settings')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: profile.has_instagram ? '#ec4899' : '#ef4444' }} />
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Instagram</Text>
+             </TouchableOpacity>
+             <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); fetchDashboardData(); }} style={{ padding: 4 }}>
+                <RefreshCw size={12} color="rgba(255,255,255,0.4)" />
+             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* STATUS HUB (Ported from Web) */}
+        <View style={{ backgroundColor: '#ffffff', borderRadius: 28, padding: 20, marginBottom: 28, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(236,72,153,0.1)', justifyContent: 'center', alignItems: 'center' }}>
+               <ImageIcon size={18} color="#ec4899" />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>Status Hub</Text>
+          </View>
+
+          <TextInput 
+            value={statusDraft.message}
+            onChangeText={t => setStatusDraft(prev => ({ ...prev, message: t }))}
+            placeholder="What's happening? Share a celebration..."
+            placeholderTextColor="#94a3b8"
+            multiline
+            style={{ backgroundColor: '#f8fafc', borderRadius: 20, padding: 16, color: '#0f172a', fontSize: 15, minHeight: 100, textAlignVertical: 'top', borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 12 }}
+          />
+
+          {statusDraft.media_url && (
+            <View style={{ position: 'relative', marginBottom: 12, borderRadius: 16, overflow: 'hidden', height: 180 }}>
+               <Image source={{ uri: statusDraft.media_url }} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+               <TouchableOpacity 
+                  onPress={() => setStatusDraft(prev => ({ ...prev, media_url: '' }))}
+                  style={{ position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 12 }}
+               >
+                  <X size={16} color="#fff" />
+               </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+             <TouchableOpacity 
+               onPress={handlePickImage}
+               disabled={uploading}
+               style={{ flex: 1, height: 50, backgroundColor: '#f1f5f9', borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }}
+             >
+                {uploading ? <ActivityIndicator size="small" color="#ec4899" /> : <><ImageIcon size={18} color="#64748b" /><Text style={{ color: '#475569', fontWeight: '800', fontSize: 13 }}>Attach Photo</Text></>}
+             </TouchableOpacity>
+
+             <TouchableOpacity 
+               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowContactPicker(true); }}
+               style={{ flex: 1, height: 50, backgroundColor: statusDraft.recipients.length > 0 ? 'rgba(99,102,241,0.1)' : '#f1f5f9', borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8, borderWidth: statusDraft.recipients.length > 0 ? 1 : 0, borderColor: '#818cf8' }}
+             >
+                {statusDraft.recipients.length > 0 ? <UserCheck size={18} color="#6366f1" /> : <Globe size={18} color="#64748b" />}
+                <Text style={{ color: statusDraft.recipients.length > 0 ? '#6366f1' : '#475569', fontWeight: '800', fontSize: 13 }}>
+                   {statusDraft.recipients.length > 0 ? `${statusDraft.recipients.length} Selected` : 'Broadcast'}
+                </Text>
+             </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity 
+            onPress={handlePostStatus}
+            disabled={isPosting || (!statusDraft.message && !statusDraft.media_url)}
+            style={{ backgroundColor: '#0f172a', height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, opacity: (isPosting || (!statusDraft.message && !statusDraft.media_url)) ? 0.6 : 1 }}
+          >
+             {isPosting ? <ActivityIndicator size="small" color="#fff" /> : <><Send size={20} color="#fff" /><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>Post to WhatsApp</Text></>}
           </TouchableOpacity>
         </View>
 
-        {/* Stat Cards */}
-        <View style={{ gap: 12, marginBottom: 28 }}>
-          {[
-            { title: 'Total Contacts', value: stats.totalContacts, color: '#3b82f6', bg: 'rgba(59,130,246,0.1)', route: '/contacts' },
-            { title: 'Wishes Sent', value: stats.sentWishes, color: '#22c55e', bg: 'rgba(34,197,94,0.1)', route: '/wishes' },
-            { title: 'Pending', value: stats.pendingWishes, color: '#f97316', bg: 'rgba(249,115,22,0.1)', route: '/wishes' },
-          ].map((s, i) => (
-            <TouchableOpacity key={i} onPress={() => router.push(s.route as any)} style={{ backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 22, padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: s.bg, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 22, fontWeight: '900', color: s.color }}>{s.value}</Text>
-                </View>
-                <Text style={{ color: 'rgba(255,255,255,0.7)', fontWeight: '800', fontSize: 14 }}>{s.title}</Text>
-              </View>
-              <ChevronRight size={18} color="rgba(255,255,255,0.3)" />
-            </TouchableOpacity>
-          ))}
+        {/* STATS STRIP */}
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 28 }}>
+           {[
+             { label: 'Contacts', val: stats.totalContacts, color: '#3b82f6' },
+             { label: 'Sent', val: stats.sentWishes, color: '#22c55e' },
+             { label: 'Pending', val: stats.pendingWishes, color: '#f97316' }
+           ].map((s, i) => (
+             <View key={i} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: s.color }}>{s.val}</Text>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginTop: 2 }}>{s.label}</Text>
+             </View>
+           ))}
+        </View>
+
+        {/* Celebration Radar (Redesigned for Mobile) */}
+        <View style={{ backgroundColor: '#6d28d9', borderRadius: 28, padding: 24, marginBottom: 28 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+             <View>
+                <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 6 }}>Celebration Radar</Text>
+                {radarEvent ? (
+                  <>
+                     <Text style={{ color: '#ffffff', fontSize: 24, fontWeight: '900' }}>{radarEvent.name}</Text>
+                     <Text style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '700', fontSize: 14, marginTop: 4 }}>{radarEvent.type} • {radarEvent.daysAway === 0 ? 'Today! 🎉' : `${radarEvent.daysAway} days away`}</Text>
+                  </>
+                ) : (
+                  <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '900' }}>No Upcoming Events</Text>
+                )}
+             </View>
+             <Gift size={32} color="rgba(255,255,255,0.3)" />
+          </View>
+          <TouchableOpacity onPress={() => router.push('/scheduler')} style={{ backgroundColor: '#ffffff', borderRadius: 16, padding: 14, marginTop: 20, alignItems: 'center' }}>
+             <Text style={{ color: '#6d28d9', fontWeight: '900', fontSize: 14 }}>Schedule a Wish</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Upcoming Scheduled */}
-        <View style={{ marginBottom: 28 }}>
+        <View style={{ marginBottom: 20 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: '#ffffff' }}>Upcoming Scheduled</Text>
-            <TouchableOpacity onPress={() => router.push('/wishes')}><Text style={{ color: '#ec4899', fontWeight: '800', fontSize: 13 }}>View All →</Text></TouchableOpacity>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: '#ffffff' }}>Pending Wishes</Text>
+            <TouchableOpacity onPress={() => router.push('/wishes')}><Text style={{ color: '#ec4899', fontWeight: '800', fontSize: 13 }}>View All</Text></TouchableOpacity>
           </View>
           {upcomingWishes.length === 0 ? (
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 22, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed' }}>
-              <Text style={{ color: 'rgba(255,255,255,0.3)', fontWeight: '600' }}>No wishes scheduled yet.</Text>
-              <TouchableOpacity onPress={() => router.push('/scheduler')} style={{ marginTop: 8 }}><Text style={{ color: '#ec4899', fontWeight: '800' }}>Schedule one now →</Text></TouchableOpacity>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 22, padding: 24, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+              <Text style={{ color: 'rgba(255,255,255,0.3)', fontWeight: '700' }}>Nothing scheduled yet.</Text>
             </View>
           ) : upcomingWishes.map((wish: any) => (
-            <View key={wish.id} style={{ backgroundColor: '#ffffff', borderRadius: 22, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10 }}>
-              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
-                <Text style={{ fontSize: 22 }}>{occasionEmoji[wish.occasion_type] || '✨'}</Text>
+            <View key={wish.id} style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 22, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
+                <Text style={{ fontSize: 20 }}>{occasionEmoji[wish.occasion_type] || '✨'}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '800', color: '#0f172a', fontSize: 15 }}>{wish.contacts?.name}</Text>
-                <Text style={{ color: '#64748b', fontSize: 12, textTransform: 'capitalize' }}>{wish.occasion_type} • {format(new Date(wish.scheduled_datetime), 'MMM do, h:mm a')}</Text>
+                <Text style={{ fontWeight: '800', color: '#ffffff', fontSize: 15 }}>{wish.contacts?.name}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{format(new Date(wish.scheduled_for || wish.scheduled_datetime), 'MMM do, h:mm a')}</Text>
               </View>
             </View>
           ))}
         </View>
-
-        {/* Celebration Radar */}
-        <View style={{ backgroundColor: '#6d28d9', borderRadius: 28, padding: 24, overflow: 'hidden' }}>
-          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Celebration Radar</Text>
-          {radarEvent ? (
-            <>
-              <Gift size={32} color="rgba(255,255,255,0.8)" style={{ marginBottom: 8 }} />
-              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '900', textTransform: 'uppercase' }}>{radarEvent.type}</Text>
-              <Text style={{ color: '#ffffff', fontSize: 24, fontWeight: '900', marginBottom: 4 }}>{radarEvent.name}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontWeight: '600', marginBottom: 20 }}>
-                {radarEvent.daysAway === 0 ? '🎉 Today!' : `In ${radarEvent.daysAway} day${radarEvent.daysAway > 1 ? 's' : ''} — ${format(radarEvent.date, 'MMM do')}`}
-              </Text>
-              <TouchableOpacity onPress={() => router.push('/scheduler')} style={{ backgroundColor: '#ffffff', borderRadius: 18, paddingVertical: 14, alignItems: 'center' }}>
-                <Text style={{ color: '#6d28d9', fontWeight: '900', fontSize: 15 }}>Schedule a Wish</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TrendingUp size={32} color="rgba(255,255,255,0.8)" style={{ marginBottom: 8 }} />
-              <Text style={{ color: '#ffffff', fontSize: 20, fontWeight: '900', marginBottom: 6 }}>No Upcoming Events</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', marginBottom: 20 }}>Add contacts with birthdays & anniversaries to see celebrations here.</Text>
-              <TouchableOpacity onPress={() => router.push('/contacts')} style={{ backgroundColor: '#ffffff', borderRadius: 18, paddingVertical: 14, alignItems: 'center' }}>
-                <Text style={{ color: '#6d28d9', fontWeight: '900', fontSize: 15 }}>Add Contacts</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
       </ScrollView>
+
+      {showContactPicker && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', padding: 20, paddingTop: 60, zIndex: 100 }}>
+           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>Target Contacts</Text>
+              <TouchableOpacity onPress={() => setShowContactPicker(false)} style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: 10, borderRadius: 14 }}>
+                 <X size={20} color="#fff" />
+              </TouchableOpacity>
+           </View>
+
+           <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 18, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 20, height: 54 }}>
+              <Search size={18} color="rgba(255,255,255,0.4)" />
+              <TextInput 
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search by name or number..."
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                style={{ flex: 1, color: '#fff', marginLeft: 10, fontWeight: '600' }}
+              />
+           </View>
+
+           <FlatList 
+              data={filteredContacts}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => {
+                const phone = item.phone_number || item.phone;
+                const isSelected = statusDraft.recipients.includes(phone);
+                return (
+                  <TouchableOpacity 
+                    onPress={() => toggleRecipient(phone)}
+                    style={{ flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: isSelected ? 'rgba(236,72,153,0.15)' : 'rgba(255,255,255,0.03)', borderRadius: 18, marginBottom: 10, borderWidth: 1, borderColor: isSelected ? '#ec4899' : 'rgba(255,255,255,0.05)' }}
+                  >
+                     <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
+                        <Text style={{ color: '#fff', fontWeight: '900' }}>{item.name?.[0]}</Text>
+                     </View>
+                     <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>{item.name}</Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{phone}</Text>
+                     </View>
+                     {isSelected ? <Check size={20} color="#ec4899" /> : <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)' }} />}
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={<Text style={{ color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 40 }}>No contacts found.</Text>}
+           />
+
+           <TouchableOpacity 
+             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowContactPicker(false); }}
+             style={{ backgroundColor: '#ec4899', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginTop: 20 }}
+           >
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>Confirm {statusDraft.recipients.length} Selection</Text>
+           </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
+

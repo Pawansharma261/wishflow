@@ -2,10 +2,12 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, TextInput,
 import { supabase } from '../../src/lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, Check, Sparkles, Cloud, Users, PlusCircle } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Check, Sparkles, Cloud, Users, PlusCircle, Paperclip, X, RefreshCw } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as Contacts from 'expo-contacts';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadMedia } from '../../src/lib/storage';
 
 const OCCASIONS = [
   { id: 'birthday', name: 'Birthday', emoji: '🎂' },
@@ -26,11 +28,13 @@ export default function Scheduler() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const [formData, setFormData] = useState({
     contact_id: '',
     occasion_type: 'birthday',
     wish_message: '',
+    media_url: '',
     scheduled_datetime: '',
     channels: ['whatsapp'] as string[],
     is_recurring: false,
@@ -105,6 +109,34 @@ export default function Scheduler() {
     }
   };
 
+  const handlePickImage = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'WishFlow needs access to your photos to attach media.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setUploading(true);
+      try {
+        const url = await uploadMedia(result.assets[0].uri);
+        setFormData(prev => ({ ...prev, media_url: url }));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (err: any) {
+        Alert.alert('Upload Failed', err.message);
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
   const suggestMessage = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const contact = contactsList.find(c => c.id === formData.contact_id);
@@ -130,13 +162,26 @@ export default function Scheduler() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const utcDate = new Date(formData.scheduled_datetime).toISOString();
-    const { error } = await supabase.from('wishes').insert({ ...formData, scheduled_datetime: utcDate, user_id: user.id });
+    
+    // BACKEND SYNC: Use correct keys for wishes table
+    const { error } = await supabase.from('wishes').insert({ 
+      contact_id: formData.contact_id,
+      occasion_type: formData.occasion_type,
+      message: formData.wish_message,
+      media_url: formData.media_url,
+      scheduled_for: utcDate,
+      channels: formData.channels,
+      is_recurring: formData.is_recurring,
+      recurrence_rule: formData.recurrence_rule,
+      user_id: user.id 
+    });
+
     if (!error) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false); setStep(1);
-        setFormData({ contact_id: '', occasion_type: 'birthday', wish_message: '', scheduled_datetime: '', channels: ['whatsapp'], is_recurring: false, recurrence_rule: 'YEARLY' });
+        setFormData({ contact_id: '', occasion_type: 'birthday', wish_message: '', media_url: '', scheduled_datetime: '', channels: ['whatsapp'], is_recurring: false, recurrence_rule: 'YEARLY' });
       }, 2800);
     } else {
       Alert.alert('Error', error.message);
@@ -194,7 +239,7 @@ export default function Scheduler() {
         </View>
 
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-          <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 28, padding: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', minHeight: 380 }}>
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 28, padding: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', minHeight: 450 }}>
 
             {/* Step 1: Select Contact */}
             {step === 1 && (
@@ -218,18 +263,18 @@ export default function Scheduler() {
                   <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                     <Text style={{ color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>You have no saved contacts yet. Tap the button above to import one.</Text>
                   </View>
-                ) : contactsList.map(c => (
-                  <TouchableOpacity key={c.id} onPress={() => { Haptics.selectionAsync(); setFormData({ ...formData, contact_id: c.id }); }} style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 18, marginBottom: 10, borderWidth: 2, borderColor: formData.contact_id === c.id ? '#ec4899' : 'rgba(255,255,255,0.1)', backgroundColor: formData.contact_id === c.id ? 'rgba(236,72,153,0.1)' : 'transparent' }}>
+                ) : <View style={{ gap: 10 }}>{contactsList.map(c => (
+                  <TouchableOpacity key={c.id} onPress={() => { Haptics.selectionAsync(); setFormData({ ...formData, contact_id: c.id }); }} style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 18, borderWidth: 2, borderColor: formData.contact_id === c.id ? '#ec4899' : 'rgba(255,255,255,0.1)', backgroundColor: formData.contact_id === c.id ? 'rgba(236,72,153,0.1)' : 'transparent' }}>
                     <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 14 }}>
                       <Text style={{ fontSize: 18, fontWeight: '900', color: '#ffffff' }}>{c.name[0]}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontWeight: '800', color: '#ffffff', fontSize: 15 }}>{c.name}</Text>
-                      {c.phone_number && <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '600', marginTop: 3 }}>{c.phone_number}</Text>}
+                      <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '600', marginTop: 3 }}>{c.phone_number || c.phone || 'No Phone'}</Text>
                     </View>
                     {formData.contact_id === c.id && <Check size={20} color="#ec4899" />}
                   </TouchableOpacity>
-                ))}
+                ))}</View>}
               </View>
             )}
 
@@ -249,39 +294,75 @@ export default function Scheduler() {
               </View>
             )}
 
-            {/* Step 3: Message */}
+            {/* Step 3: Message & Media */}
             {step === 3 && (
               <View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                   <View>
-                    <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Your Personal Message</Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>A heartfelt, individual message just for them.</Text>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Your Message</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600' }}>A heartfelt message just for them.</Text>
                   </View>
                   <TouchableOpacity onPress={suggestMessage} style={{ backgroundColor: 'rgba(99,102,241,0.2)', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)' }}>
                     <Sparkles size={14} color="#818cf8" />
-                    <Text style={{ color: '#818cf8', fontWeight: '900', fontSize: 12 }}>Suggest</Text>
+                    <Text style={{ color: '#818cf8', fontWeight: '900', fontSize: 12 }}>AI Suggest</Text>
                   </TouchableOpacity>
                 </View>
-                <TextInput value={formData.wish_message} onChangeText={t => setFormData({ ...formData, wish_message: t })} placeholder="Write something personal and warm..." placeholderTextColor="rgba(255,255,255,0.3)" multiline style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: 16, color: '#ffffff', fontSize: 16, minHeight: 180, textAlignVertical: 'top', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', fontWeight: '500', lineHeight: 24 }} />
-                <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, marginTop: 8 }}>💡 Keep it personal — this is a one-on-one message to your friend.</Text>
+                <TextInput 
+                  value={formData.wish_message} 
+                  onChangeText={t => setFormData({ ...formData, wish_message: t })} 
+                  placeholder="Write something personal and warm..." 
+                  placeholderTextColor="rgba(255,255,255,0.3)" 
+                  multiline 
+                  style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: 16, color: '#ffffff', fontSize: 16, minHeight: 140, textAlignVertical: 'top', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', fontWeight: '500', lineHeight: 24, marginBottom: 20 }} 
+                />
+
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Personalized Media</Text>
+                
+                {formData.media_url ? (
+                   <View style={{ borderRadius: 24, overflow: 'hidden', height: 160, borderWidth: 1, borderColor: 'rgba(236,72,153,0.3)' }}>
+                      <Image source={{ uri: formData.media_url }} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <TouchableOpacity 
+                        onPress={() => setFormData({...formData, media_url: ''})}
+                        style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 14 }}
+                      >
+                         <X size={18} color="#fff" />
+                      </TouchableOpacity>
+                   </View>
+                ) : (
+                  <TouchableOpacity 
+                    onPress={handlePickImage} 
+                    disabled={uploading}
+                    style={{ height: 120, borderStyle: 'dashed', borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 24, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)' }}
+                  >
+                     {uploading ? (
+                       <ActivityIndicator color="#ec4899" />
+                     ) : (
+                       <>
+                        <Paperclip size={24} color="rgba(255,255,255,0.4)" style={{ marginBottom: 8 }} />
+                        <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '800' }}>Pick from Library</Text>
+                       </>
+                     )}
+                  </TouchableOpacity>
+                )}
+                <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, marginTop: 12 }}>💡 Images usually get 400% more engagement on WhatsApp.</Text>
               </View>
             )}
 
             {/* Step 4: Delivery */}
             {step === 4 && (
               <View>
-                <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Delivery Details</Text>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: '#ffffff', marginBottom: 4 }}>Final Details</Text>
                 <Text style={{ color: 'rgba(255,255,255,0.5)', fontWeight: '600', marginBottom: 20 }}>When and how should we send it?</Text>
 
                 <View style={{ backgroundColor: 'rgba(99,102,241,0.1)', borderRadius: 16, padding: 14, marginBottom: 18, flexDirection: 'row', gap: 10, borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)' }}>
                   <Cloud size={15} color="#818cf8" style={{ marginTop: 1 }} />
                   <Text style={{ flex: 1, color: 'rgba(255,255,255,0.6)', fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
-                    Your phone doesn't need to be on. Our servers deliver your wish on time, automatically. 🌐
+                    Your phone doesn't need to be on. We deliver your wish automatically. 🌐
                   </Text>
                 </View>
 
                 <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Delivery Date & Time</Text>
-                <TextInput value={formData.scheduled_datetime} onChangeText={t => setFormData({ ...formData, scheduled_datetime: t })} placeholder="YYYY-MM-DDTHH:MM  (e.g. 2025-04-25T10:00)" placeholderTextColor="rgba(255,255,255,0.3)" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, color: '#ffffff', fontWeight: '600', marginBottom: 20, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
+                <TextInput value={formData.scheduled_datetime} onChangeText={t => setFormData({ ...formData, scheduled_datetime: t })} placeholder="YYYY-MM-DDTHH:MM" placeholderTextColor="rgba(255,255,255,0.3)" style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, color: '#ffffff', fontWeight: '600', marginBottom: 20, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }} />
 
                 <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Send Via</Text>
                 {[
@@ -295,7 +376,7 @@ export default function Scheduler() {
                         <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 15 }}>{ch.label}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
                           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: ch.connected ? '#22c55e' : '#ef4444' }} />
-                          <Text style={{ color: ch.connected ? '#4ade80' : '#ef4444', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' }}>{ch.connected ? 'Connected' : 'Not Connected'}</Text>
+                          <Text style={{ color: ch.connected ? '#4ade80' : '#ef4444', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' }}>{ch.connected ? 'Connected' : 'Offline'}</Text>
                         </View>
                       </View>
                     </View>
