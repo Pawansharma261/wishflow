@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { supabaseAdmin } = require('../db/supabaseAdmin');
+const supabaseAdmin = require('../db/supabaseAdmin');
 
 const upload = multer({ 
   limits: { fileSize: 2 * 1024 * 1024 } // 2MB Limit
