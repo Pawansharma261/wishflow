@@ -317,7 +317,7 @@ const Dashboard = () => {
                  <div className="flex -space-x-3">
                    {allContacts.slice(0, 5).map((c, i) => (
                       <div key={i} className="w-8 h-8 rounded-xl bg-white/10 border-2 border-[#0f0c29] flex items-center justify-center text-[10px] font-bold text-white/60">
-                        {c.name[0]}
+                        {c?.name?.[0] || '?'}
                       </div>
                    ))}
                    {allContacts.length > 5 && (

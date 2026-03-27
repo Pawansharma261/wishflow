@@ -337,10 +337,10 @@ const Dashboard = () => {
                     <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-xl shadow-inner">
                       {wish.occasion_type === 'birthday' ? '🎂' : wish.occasion_type === 'christmas' ? '🎄' : wish.occasion_type === 'diwali' ? '🪔' : '✨'}
                     </div>
-                    <div>
-                      <h4 className="font-bold text-white text-sm">{wish.contact_name || 'Anonymous'}</h4>
-                      <p className="text-white/40 text-[11px] font-medium capitalize tracking-wide">{wish.occasion_type} • {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, p') : '—'}</p>
-                    </div>
+                   <div>
+                     <h4 className="font-bold text-white text-sm">{wish.contact_name || wish.contacts?.name || 'Friend'}</h4>
+                     <p className="text-white/40 text-[11px] font-medium capitalize tracking-wide">{wish.occasion_type} • {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, p') : '—'}</p>
+                   </div>
                   </div>
                   <div className="flex -space-x-1.5">
                     {wish.channels.map(c => (
