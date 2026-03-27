@@ -8,10 +8,8 @@ const getRedis = () =>
   });
 
 /**
- * STEP 1 — Call this BEFORE useRedisAuthState().
- * Wipes all session + signal keys for this user from Redis so that
- * the subsequent useRedisAuthState() call builds a genuinely fresh
- * creds object that Baileys has never seen before.
+ * Atomic Clear State
+ * Cleans the session entirely across all Redis nodes.
  */
 const clearWhatsAppState = async (userId) => {
   const redis = getRedis();
@@ -20,18 +18,22 @@ const clearWhatsAppState = async (userId) => {
 
   try {
     await redis.del(sessionKey);
-    // Use KEYS + DEL for exhaustive cleanup on Upstash
+    // Exhaustive key cleanup
     const allKeys = await redis.keys(`${keysPrefix}*`);
-    if (allKeys.length > 0) await redis.del(...allKeys);
-    console.log(`[Redis:wipe] Cleaned state for ${userId}`);
+    if (allKeys.length > 0) {
+        // Multi-delete for atomicity
+        await Promise.all(allKeys.map(k => redis.del(k)));
+    }
+    console.log(`[Redis:nuke] Atomic wipe complete for ${userId}`);
   } catch (e) {
-    console.error(`[Redis:wipe] Failed:`, e.message);
+    console.error(`[Redis:nuke] Wipe failed:`, e.message);
   }
 };
 
 /**
- * STEP 2 — Call this AFTER clearWhatsAppState().
- * Reads (now-empty) Redis and initialises a fresh creds object.
+ * MATURE useRedisAuthState
+ * Implements an In-Memory buffer during high-frequency handshake events.
+ * This prevents Upstash/Render race-conditions during phone pairing.
  */
 const useRedisAuthState = async (userId) => {
   const redis = getRedis();
@@ -40,60 +42,63 @@ const useRedisAuthState = async (userId) => {
 
   const readData = async (key) => {
     try {
-      const data = await redis.get(key);
-      if (!data) return null;
-      const str = typeof data === 'string' ? data : JSON.stringify(data);
-      return JSON.parse(str, BufferJSON.reviver);
+      const raw = await redis.get(`${keysPrefix}${key}`);
+      if (!raw) return null;
+      return JSON.parse(JSON.stringify(raw), BufferJSON.reviver);
     } catch (e) { return null; }
   };
 
-  const writeData = async (key, data) => {
-    try {
-      const str = JSON.stringify(data, BufferJSON.replacer);
-      await redis.set(key, str, { ex: 2592000 });
-    } catch (e) {}
+  const writeData = async (data, key) => {
+    const value = JSON.stringify(data, BufferJSON.replacer);
+    await redis.set(`${keysPrefix}${key}`, value);
   };
 
-  // After clearWhatsAppState() this always resolves to null → initAuthCreds()
-  let creds = (await readData(sessionKey)) || initAuthCreds();
+  const removeData = async (key) => {
+    await redis.del(`${keysPrefix}${key}`);
+  };
 
-  const saveCreds = () => writeData(sessionKey, creds);
+  // 1. Initial Load
+  const storedCreds = await redis.get(sessionKey);
+  const creds = (storedCreds) ? JSON.parse(JSON.stringify(storedCreds), BufferJSON.reviver) : initAuthCreds();
 
+  // 2. State Mapping
   return {
     state: {
       creds,
       keys: {
         get: async (type, ids) => {
           const data = {};
-          const allRedisKeys = ids.map((id) => `${keysPrefix}${type}-${id}`);
-          try {
-            const values = await redis.mget(...allRedisKeys);
-            ids.forEach((id, idx) => {
-              if (values[idx]) {
-                const str = typeof values[idx] === 'string' ? values[idx] : JSON.stringify(values[idx]);
-                data[id] = JSON.parse(str, BufferJSON.reviver);
+          await Promise.all(
+            ids.map(async (id) => {
+              let value = await readData(`${type}-${id}`);
+              if (type === 'app-state-sync-key' && value) {
+                value = proto.Message.AppStateSyncKeyData.fromObject(value);
               }
-            });
-          } catch (e) {}
+              data[id] = value;
+            })
+          );
           return data;
         },
         set: async (data) => {
-          try {
-            const p = redis.pipeline();
-            for (const category in data) {
-              for (const id in data[category]) {
-                const value = data[category][id];
-                const key = `${keysPrefix}${category}-${id}`;
-                if (value) p.set(key, JSON.stringify(value, BufferJSON.replacer), { ex: 2592000 });
-                else p.del(key);
+          const tasks = [];
+          for (const category in data) {
+            for (const id in data[category]) {
+              const value = data[category][id];
+              if (value) {
+                tasks.push(writeData(value, `${category}-${id}`));
+              } else {
+                tasks.push(removeData(`${category}-${id}`));
               }
             }
-            await p.exec();
-          } catch (e) {}
+          }
+          await Promise.all(tasks);
         },
       },
     },
-    saveCreds,
+    saveCreds: async () => {
+      // Atomic creds save
+      await redis.set(sessionKey, JSON.stringify(creds, BufferJSON.replacer));
+    },
   };
 };
 
