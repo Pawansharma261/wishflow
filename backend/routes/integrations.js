@@ -1,3 +1,8 @@
+const express = require('express');
+const router = express.Router();
+const axios = require('axios');
+const supabaseAdmin = require('../db/supabaseAdmin');
+const { connectWhatsApp, connectWhatsAppWithPhone, disconnectWhatsApp, getLogs } = require('../services/whatsappService');
 const requireAuth = require('../middleware/requireAuth');
 const { pairPhoneLimiter, forceResetLimiter } = require('../middleware/rateLimit');
 
