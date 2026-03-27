@@ -32,6 +32,7 @@ const Dashboard = () => {
   const [postingStatus, setPostingStatus] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
+  const [postType, setPostType] = useState('broadcast'); // 'broadcast' or 'status'
   const fileInputRef = useRef(null);
 
   const handleManualRefresh = async (e) => {
@@ -79,11 +80,18 @@ const Dashboard = () => {
     if (!profile.whatsapp_connected && !statusDraft.scheduledAt) return alert('WhatsApp must be connected to post status immediately.');
     if (!statusDraft.text && !statusDraft.mediaUrl) return alert('Please enter text or choose an image.');
     
-    const recipientPhones = statusDraft.recipients.length > 0 
-      ? statusDraft.recipients 
-      : allContacts.map(c => c.phone).filter(p => !!p);
-
-    if (recipientPhones.length === 0) return alert('No recipients available.');
+    // Logic for Broadcast vs Status
+    let recipientPhones = [];
+    if (postType === 'broadcast') {
+        recipientPhones = statusDraft.recipients.length > 0 
+          ? statusDraft.recipients 
+          : allContacts.map(c => c.phone).filter(p => !!p);
+        
+        if (recipientPhones.length === 0) return alert('No recipients selected for broadcast.');
+    } else {
+        // Status type: one row with status@broadcast
+        recipientPhones = ['status@broadcast'];
+    }
 
     setPostingStatus(true);
     try {
@@ -93,14 +101,14 @@ const Dashboard = () => {
           const contact = allContacts.find(c => c.phone === phone);
           return {
             user_id: userId,
-            contact_id: contact?.id,
-            contact_name: contact?.name || 'Contact',
+            contact_id: contact?.id || null,
+            contact_name: contact?.name || (phone === 'status@broadcast' ? 'WhatsApp Status' : 'Contact'),
             contact_phone: phone,
             message: statusDraft.text,
             media_url: statusDraft.mediaUrl,
             scheduled_for: utcScheduledDate,
             status: 'pending',
-            occasion_type: 'custom_status',
+            occasion_type: postType === 'status' ? 'status_story' : 'custom_broadcast',
             channels: ['whatsapp']
           };
         });
@@ -108,19 +116,23 @@ const Dashboard = () => {
         const { error } = await supabase.from('wishes').insert(items);
         if (error) throw error;
         
-        alert(`Successfully scheduled for ${recipientPhones.length} contact(s)! 📅`);
+        alert(`Successfully scheduled ${postType} for ${recipientPhones.length} target(s)! 📅`);
         setStatusDraft({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
+        fetchDashboardData();
       } else {
+        // Immediate post
         const res = await apiClient.post('/api/integrations/whatsapp/post-status', {
           text: statusDraft.text,
           mediaUrl: statusDraft.mediaUrl,
-          recipients: recipientPhones
+          recipients: recipientPhones,
+          isStory: postType === 'status'
         });
         if (res.success) {
-          alert(`Successfully sent to ${recipientPhones.length} contact(s)! 🚀`);
+          alert(`Successfully sent ${postType}! 🚀`);
           setStatusDraft({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
+          fetchDashboardData();
         } else {
-          throw new Error(res.error || 'Failed to post status');
+          throw new Error(res.error || 'Failed to post');
         }
       }
     } catch (err) {
@@ -330,7 +342,20 @@ const Dashboard = () => {
               </div>
               <div>
                 <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Status & Direct Broadcast</h2>
-                <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-0.5 underline decoration-indigo-500/50 underline-offset-4">Target Specific Contacts or All</p>
+                <div className="flex items-center space-x-4 mt-1">
+                   <button 
+                      onClick={() => setPostType('broadcast')}
+                      className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg transition-all ${postType === 'broadcast' ? 'bg-indigo-500 text-white' : 'bg-white/5 text-white/40'}`}
+                   >
+                      Broadcast DM
+                   </button>
+                   <button 
+                      onClick={() => setPostType('status')}
+                      className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg transition-all ${postType === 'status' ? 'bg-indigo-500 text-white' : 'bg-white/5 text-white/40'}`}
+                   >
+                      WhatsApp Status
+                   </button>
+                </div>
               </div>
             </div>
             {profile.whatsapp_connected && (
@@ -397,93 +422,133 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
-               <div className="flex items-center justify-between mb-4 px-2">
-                 <div className="flex items-center space-x-2">
-                    <Users size={16} className="text-indigo-400" />
-                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Target Recipients</span>
-                 </div>
-                 <div className="relative">
-                    <input 
-                       type="text"
-                       placeholder="Search name..."
-                       className="bg-transparent border-b border-white/10 text-xs py-1 px-4 text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 transition-all font-medium pr-8"
-                       value={contactSearch}
-                       onChange={e => setContactSearch(e.target.value)}
-                    />
-                    <Search className="absolute right-0 top-1/2 -translate-y-1/2 text-white/20" size={14} />
-                 </div>
-               </div>
-
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                  <div className="flex items-center space-x-2 text-indigo-400">
-                    <Calendar size={14} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Schedule for Later?</span>
+            {postType === 'broadcast' && (
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center justify-between mb-4 px-2">
+                  <div className="flex items-center space-x-2">
+                      <Users size={16} className="text-indigo-400" />
+                      <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Target Recipients</span>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <input 
-                      type="datetime-local"
-                      className="bg-transparent border-none text-white text-[10px] font-black uppercase tracking-widest focus:ring-0 cursor-pointer"
-                      style={{ colorScheme: 'dark' }}
-                      value={statusDraft.scheduledAt}
-                      onChange={(e) => setStatusDraft(prev => ({ ...prev, scheduledAt: e.target.value }))}
-                    />
-                    {statusDraft.scheduledAt && (
-                      <button 
-                        onClick={() => setStatusDraft(prev => ({ ...prev, scheduledAt: '' }))}
-                        className="text-brand-rose text-[8px] font-black uppercase underline"
-                      >
-                        Clear
-                      </button>
-                    )}
+                  <div className="relative">
+                      <input 
+                        type="text"
+                        placeholder="Search name..."
+                        className="bg-transparent border-b border-white/10 text-xs py-1 px-4 text-white placeholder-white/20 focus:outline-none focus:border-indigo-500 transition-all font-medium pr-8"
+                        value={contactSearch}
+                        onChange={e => setContactSearch(e.target.value)}
+                      />
+                      <Search className="absolute right-0 top-1/2 -translate-y-1/2 text-white/20" size={14} />
                   </div>
                 </div>
 
-               <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                  <button 
-                     onClick={() => setStatusDraft(prev => ({ ...prev, recipients: [] }))}
-                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusDraft.recipients.length === 0 ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}
-                  >
-                     All Contacts
-                  </button>
-                  {allContacts.filter(c => c.name?.toLowerCase().includes(contactSearch.toLowerCase())).map((c) => (
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center space-x-2 text-indigo-400">
+                      <Calendar size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Schedule for Later?</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <input 
+                        type="datetime-local"
+                        className="bg-transparent border-none text-white text-[10px] font-black uppercase tracking-widest focus:ring-0 cursor-pointer"
+                        style={{ colorScheme: 'dark' }}
+                        value={statusDraft.scheduledAt}
+                        onChange={(e) => setStatusDraft(prev => ({ ...prev, scheduledAt: e.target.value }))}
+                      />
+                      {statusDraft.scheduledAt && (
+                        <button 
+                          onClick={() => setStatusDraft(prev => ({ ...prev, scheduledAt: '' }))}
+                          className="text-brand-rose text-[8px] font-black uppercase underline"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
                     <button 
-                       key={c.phone}
-                       onClick={() => toggleRecipient(c.phone)}
-                       className={`px-4 py-2 rounded-xl text-[10px] font-bold transition-all flex items-center space-x-2 ${statusDraft.recipients.includes(c.phone) ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}
+                      onClick={() => setStatusDraft(prev => ({ ...prev, recipients: [] }))}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusDraft.recipients.length === 0 ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}
                     >
-                       <span>{c.name}</span>
-                       {statusDraft.recipients.includes(c.phone) && <CheckCircle2 size={12} />}
+                      All Contacts
                     </button>
-                  ))}
-               </div>
-            </div>
+                    {allContacts.filter(c => c.name?.toLowerCase().includes(contactSearch.toLowerCase())).map((c) => (
+                      <button 
+                        key={c.phone}
+                        onClick={() => toggleRecipient(c.phone)}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-bold transition-all flex items-center space-x-2 ${statusDraft.recipients.includes(c.phone) ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}
+                      >
+                        <span>{c.name}</span>
+                        {statusDraft.recipients.includes(c.phone) && <CheckCircle2 size={12} />}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {postType === 'status' && (
+              <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-3xl p-8 animate-in fade-in slide-in-from-top-2 duration-300">
+                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-center space-x-4">
+                       <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center relative ring-4 ring-indigo-500/20 ring-offset-4 ring-offset-[#0f0c29]">
+                         <Send className="text-indigo-400" size={32} />
+                       </div>
+                       <div>
+                          <p className="text-xs font-black text-white uppercase tracking-tighter">Your Story</p>
+                          <p className="text-[10px] text-white/40 font-medium uppercase tracking-widest mt-1">Visible to your saved contacts</p>
+                       </div>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center space-x-6">
+                        <div className="flex items-center space-x-2 text-indigo-400">
+                          <Calendar size={14} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Post At:</span>
+                        </div>
+                        <input 
+                          type="datetime-local"
+                          className="bg-transparent border-none text-white text-[10px] font-black uppercase tracking-widest focus:ring-0 cursor-pointer"
+                          style={{ colorScheme: 'dark' }}
+                          value={statusDraft.scheduledAt}
+                          onChange={(e) => setStatusDraft(prev => ({ ...prev, scheduledAt: e.target.value }))}
+                        />
+                    </div>
+                 </div>
+              </div>
+            )}
 
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-4">
                <div className="flex items-center space-x-2">
-                 <div className="flex -space-x-3">
-                   {statusDraft.recipients.length > 0 ? (
-                      allContacts.filter(c => statusDraft.recipients.includes(c.phone)).slice(0, 5).map((c, i) => (
-                        <div key={i} className="w-8 h-8 rounded-xl bg-indigo-500 border-2 border-[#0f0c29] flex items-center justify-center text-[10px] font-black text-white">
-                          {c?.name?.[0] || '?'}
-                        </div>
-                      ))
-                   ) : (
-                      allContacts.slice(0, 5).map((c, i) => (
-                        <div key={i} className="w-8 h-8 rounded-xl bg-white/10 border-2 border-[#0f0c29] flex items-center justify-center text-[10px] font-bold text-white/60">
-                          {c?.name?.[0] || '?'}
-                        </div>
-                      ))
-                   )}
-                   {(statusDraft.recipients.length > 5 || (statusDraft.recipients.length === 0 && allContacts.length > 5)) && (
-                      <div className="w-8 h-8 rounded-xl bg-indigo-600/50 text-white border-2 border-[#0f0c29] flex items-center justify-center text-[10px] font-bold backdrop-blur-sm">
-                        +{statusDraft.recipients.length > 0 ? statusDraft.recipients.length - 5 : allContacts.length - 5}
-                      </div>
-                   )}
-                 </div>
-                 <span className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-2">
-                    {statusDraft.recipients.length > 0 ? `To ${statusDraft.recipients.length} Selected` : 'To ALL Contacts'}
-                 </span>
+                 {postType === 'broadcast' ? (
+                   <>
+                    <div className="flex -space-x-3">
+                      {statusDraft.recipients.length > 0 ? (
+                          allContacts.filter(c => statusDraft.recipients.includes(c.phone)).slice(0, 5).map((c, i) => (
+                            <div key={i} className="w-8 h-8 rounded-xl bg-indigo-500 border-2 border-[#0f0c29] flex items-center justify-center text-[10px] font-black text-white">
+                              {c?.name?.[0] || '?'}
+                            </div>
+                          ))
+                      ) : (
+                          allContacts.slice(0, 5).map((c, i) => (
+                            <div key={i} className="w-8 h-8 rounded-xl bg-white/10 border-2 border-[#0f0c29] flex items-center justify-center text-[10px] font-bold text-white/60">
+                              {c?.name?.[0] || '?'}
+                            </div>
+                          ))
+                      )}
+                      {(statusDraft.recipients.length > 5 || (statusDraft.recipients.length === 0 && allContacts.length > 5)) && (
+                          <div className="w-8 h-8 rounded-xl bg-indigo-600/50 text-white border-2 border-[#0f0c29] flex items-center justify-center text-[10px] font-bold backdrop-blur-sm">
+                            +{statusDraft.recipients.length > 0 ? statusDraft.recipients.length - 5 : allContacts.length - 5}
+                          </div>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-2">
+                        {statusDraft.recipients.length > 0 ? `To ${statusDraft.recipients.length} Selected` : 'To ALL Contacts'}
+                    </span>
+                   </>
+                 ) : (
+                   <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">
+                     Posting to WhatsApp Story
+                   </span>
+                 )}
                </div>
 
                <button 
@@ -493,7 +558,7 @@ const Dashboard = () => {
                >
                   {postingStatus ? <RefreshCw className="animate-spin" size={20} /> : <Send size={20} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />}
                   <span className="uppercase tracking-widest text-xs font-black">
-                     {statusDraft.scheduledAt ? 'Schedule to Selected' : (statusDraft.recipients.length > 0 ? 'Send to Selected' : 'Broadcast to All')}
+                     {statusDraft.scheduledAt ? `Schedule ${postType}` : `Post ${postType} Now`}
                   </span>
                </button>
             </div>

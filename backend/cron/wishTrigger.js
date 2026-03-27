@@ -1,5 +1,5 @@
 const supabaseAdmin = require('../db/supabaseAdmin');
-const { sendWhatsAppWish } = require('../services/whatsappService');
+const { sendWhatsAppWish, postWhatsAppStatus } = require('../services/whatsappService');
 const { sendInstagramDM } = require('../services/instagramService');
 const { sendPushNotification } = require('../services/pushService');
 
@@ -10,7 +10,6 @@ const checkAndSendWishes = async () => {
       .from('wishes')
       .select(`
         *,
-        contacts!inner (*),
         users!inner (*)
       `)
       .eq('status', 'pending')
@@ -23,27 +22,46 @@ const checkAndSendWishes = async () => {
     console.log(`[WishFlow] Processing ${wishes.length} due wish(es)...`);
 
     for (const wish of wishes) {
-      const { id, message, channels, contact_id, user_id, is_recurring, recurrence_rule, scheduled_for } = wish;
-      const contact = wish.contacts;
+      const { id, message, channels, contact_id, user_id, is_recurring, recurrence_rule, scheduled_for, occasion_type } = wish;
       const user = wish.users;
+      
+      // OPTIONAL CONTACT
+      const { data: contact } = contact_id ? await supabaseAdmin.from('contacts').select('*').eq('id', contact_id).single() : { data: null };
+      const contact_name = contact?.name || wish.contact_name || 'System';
 
-      console.log(`[WishFlow] Sending wish to ${contact.name} via [${channels.join(', ')}]`);
+      console.log(`[WishFlow] Sending [${occasion_type}] to ${contact_name} via [${channels.join(', ')}]`);
 
       const results = [];
 
       // === WhatsApp via Baileys (Real Device) ===
-      const phoneToUse = contact.phone || wish.contact_phone;
-      if (channels.includes('whatsapp') && phoneToUse) {
+      if (channels.includes('whatsapp')) {
         try {
-          // Pass media_url if exists for automatic image wishes
-          const waRes = await sendWhatsAppWish(user_id, phoneToUse, message, wish.media_url || null);
-          const success = waRes.success;
+          let waRes;
+          if (occasion_type === 'status_story') {
+            // Posting to Status Story
+            waRes = await postWhatsAppStatus(user_id, { 
+              text: message, 
+              mediaUrl: wish.media_url, 
+              recipients: ['status@broadcast'] // Default story visibility
+            });
+            console.log(`[WishFlow] WhatsApp Story Posted for ${user_id} ✅`);
+          } else {
+            // Standard Message
+            const phoneToUse = contact?.phone || wish.contact_phone;
+            if (phoneToUse) {
+              waRes = await sendWhatsAppWish(user_id, phoneToUse, message, wish.media_url || null);
+              console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ✅ sent (${waRes.type})`);
+            } else {
+              throw new Error('No phone number found for wish');
+            }
+          }
           
-          results.push({ channel: 'whatsapp', status: success ? 'sent' : 'failed', payload: waRes });
-          console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ${success ? '✅ sent (' + waRes.type + ')' : '❌ failed'}`);
+          if (waRes) {
+            results.push({ channel: 'whatsapp', status: 'sent', payload: waRes });
+          }
         } catch (error) {
           results.push({ channel: 'whatsapp', status: 'failed', payload: { error: error.message } });
-          console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ❌ failed (${error.message})`);
+          console.log(`[WishFlow] WhatsApp Error [${id}]: ❌ ${error.message}`);
         }
       }
 
@@ -67,7 +85,7 @@ const checkAndSendWishes = async () => {
 
         if (devices && devices.length > 0) {
           for (const device of devices) {
-            const res = await sendPushNotification(device.fcm_token, `Wish for ${contact.name}`, message);
+            const res = await sendPushNotification(device.fcm_token, `Wish Alert`, message);
             results.push({ channel: 'push', status: res.success ? 'sent' : 'failed', payload: res });
           }
         } else {
