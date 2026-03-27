@@ -34,4 +34,37 @@ router.post('/', async (req, res) => {
   res.json(data[0]);
 });
 
+router.post('/bulk-schedule', async (req, res) => {
+  const { postType, text, mediaUrl, scheduledAt, recipients } = req.body;
+  
+  if (!recipients || !recipients.length) {
+    return res.status(400).json({ error: 'Recipients list is required' });
+  }
+
+  try {
+    const items = recipients.map(phone => {
+      return {
+        user_id: req.user.id,
+        contact_id: null, // Basic version
+        contact_name: (phone === 'status@broadcast' ? 'WhatsApp Status' : 'Broadcast Target'),
+        contact_phone: phone,
+        message: text,
+        media_url: mediaUrl,
+        scheduled_for: scheduledAt,
+        status: 'pending',
+        occasion_type: postType === 'status' ? 'status_story' : 'custom_broadcast',
+        channels: ['whatsapp']
+      };
+    });
+
+    const { data, error } = await supabaseAdmin.from('wishes').insert(items).select();
+    if (error) throw error;
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('[BulkSchedule] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+

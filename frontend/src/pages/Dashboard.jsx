@@ -97,24 +97,16 @@ const Dashboard = () => {
     try {
       if (statusDraft.scheduledAt) {
         const utcScheduledDate = new Date(statusDraft.scheduledAt).toISOString();
-        const items = recipientPhones.map(phone => {
-          const contact = allContacts.find(c => c.phone === phone);
-          return {
-            user_id: userId,
-            contact_id: contact?.id || null,
-            contact_name: contact?.name || (phone === 'status@broadcast' ? 'WhatsApp Status' : 'Contact'),
-            contact_phone: phone,
-            message: statusDraft.text,
-            media_url: statusDraft.mediaUrl,
-            scheduled_for: utcScheduledDate,
-            status: 'pending',
-            occasion_type: postType === 'status' ? 'status_story' : 'custom_broadcast',
-            channels: ['whatsapp']
-          };
-        });
+        const payload = {
+            postType, // 'broadcast' or 'status'
+            text: statusDraft.text,
+            mediaUrl: statusDraft.mediaUrl,
+            scheduledAt: utcScheduledDate,
+            recipients: recipientPhones
+        };
 
-        const { error } = await supabase.from('wishes').insert(items);
-        if (error) throw error;
+        const res = await apiClient.post('/api/wishes/bulk-schedule', payload);
+        if (!res.success) throw new Error(res.error || 'Failed to schedule');
         
         alert(`Successfully scheduled ${postType} for ${recipientPhones.length} target(s)! 📅`);
         setStatusDraft({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
@@ -271,7 +263,7 @@ const Dashboard = () => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-10">
         <div>
           <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight mb-2">
-            Hey there! ≡ƒæï
+            Hey there! 👋
           </h1>
           <p className="text-white/60 font-medium">Your automated celebration assistant is ready.</p>
         </div>
@@ -609,11 +601,11 @@ const Dashboard = () => {
               <div key={wish.id} className="card flex items-center justify-between hover-lift">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-xl">
-                    {wish.occasion_type === 'birthday' ? '≡ƒÄé' : wish.occasion_type === 'christmas' ? '≡ƒÄä' : wish.occasion_type === 'diwali' ? '≡ƒ¬ö' : 'Γ£¿'}
+                    {wish.occasion_type === 'birthday' ? '🎂' : wish.occasion_type === 'christmas' ? '🎄' : wish.occasion_type === 'diwali' ? '🪔' : '✨'}
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || 'ΓÇö'}</h4>
-                    <p className="text-slate-500 text-sm capitalize">{wish.occasion_type} ΓÇó {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, h:mm a') : 'ΓÇö'}</p>
+                    <h4 className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || '—'}</h4>
+                    <p className="text-slate-500 text-sm capitalize">{wish.occasion_type} • {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, h:mm a') : '—'}</p>
                   </div>
                 </div>
                 <div className="flex -space-x-2">
