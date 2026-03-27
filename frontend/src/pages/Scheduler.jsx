@@ -115,11 +115,13 @@ const Scheduler = () => {
     try {
       const url = await uploadMedia(file);
       setFormData(prev => ({ ...prev, media_url: url }));
+      console.debug('[Scheduler] Upload Success:', url);
     } catch (err) {
+      console.error('[Scheduler] Upload Error:', err);
       alert(err.message);
     } finally {
       setUploading(false);
-      if (e.target) e.target.value = ''; // Reset to allow re-selection
+      if (e.target) e.target.value = ''; 
     }
   };
 
@@ -281,7 +283,7 @@ const Scheduler = () => {
               
               <input 
                 type="file" 
-                className="hidden" 
+                className="absolute opacity-0 pointer-events-none w-0 h-0" 
                 ref={fileInputRef} 
                 accept="image/*" 
                 onChange={handleFileUpload}
@@ -302,7 +304,7 @@ const Scheduler = () => {
                 </div>
               ) : (
                 <button 
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => { console.debug('[UI:Scheduler] Pick clicked'); fileInputRef.current?.click(); }}
                   disabled={uploading}
                   className="w-full h-24 bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 hover:border-brand-rose/30 hover:bg-brand-rose/5 transition-all group"
                 >

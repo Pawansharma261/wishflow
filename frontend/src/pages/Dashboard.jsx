@@ -58,11 +58,13 @@ const Dashboard = () => {
     try {
       const url = await uploadMedia(file);
       setStatusDraft(prev => ({ ...prev, mediaUrl: url }));
+      console.debug('[Upload] Success:', url);
     } catch (err) {
+      console.error('[Upload] Error:', err);
       alert(err.message);
     } finally {
       setUploading(false);
-      if (e.target) e.target.value = ''; // Reset to allow re-selection
+      if (e.target) e.target.value = ''; 
     }
   };
 
@@ -350,7 +352,7 @@ const Dashboard = () => {
                  
                  <input 
                     type="file" 
-                    className="hidden" 
+                    className="absolute opacity-0 pointer-events-none w-0 h-0" 
                     ref={fileInputRef} 
                     accept="image/*" 
                     onChange={handleFileUpload}
@@ -368,7 +370,7 @@ const Dashboard = () => {
                    </div>
                  ) : (
                    <button 
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => { console.debug('[UI] Select button clicked'); fileInputRef.current?.click(); }}
                       disabled={uploading}
                       className="w-full h-32 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center text-white/40 hover:bg-white/10 hover:border-indigo-500/30 transition-all group"
                    >
