@@ -29,11 +29,15 @@ export const uploadMedia = async (uri) => {
       throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
-    const { data: { publicUrl } } = supabase.storage
+    const { data } = supabase.storage
       .from('wishing-media')
       .getPublicUrl(filePath);
 
-    return publicUrl;
+    if (!data || !data.publicUrl) {
+      throw new Error('Public URL generation failed for mobile media.');
+    }
+
+    return data.publicUrl;
   } catch (err) {
     console.error('[Storage:Mobile] Upload error:', err);
     throw err;

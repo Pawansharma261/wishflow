@@ -20,9 +20,13 @@ export const uploadMedia = async (file) => {
     throw new Error(`Upload failed: ${uploadError.message}`);
   }
 
-  const { data: { publicUrl } } = await supabase.storage
+  const { data } = supabase.storage
     .from('wishing-media')
     .getPublicUrl(filePath);
 
-  return publicUrl;
+  if (!data?.publicUrl) {
+    throw new Error('Failed to generate public URL for uploaded media.');
+  }
+
+  return data.publicUrl;
 };

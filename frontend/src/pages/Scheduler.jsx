@@ -119,6 +119,7 @@ const Scheduler = () => {
       alert(err.message);
     } finally {
       setUploading(false);
+      if (e.target) e.target.value = ''; // Reset to allow re-selection
     }
   };
 
