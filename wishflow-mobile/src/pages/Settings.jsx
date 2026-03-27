@@ -35,7 +35,8 @@ export default function Settings() {
   };
 
   const setupSocket = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
     
     // Explicitly enforce websockets to prevent Render 400 pooling errors
@@ -46,7 +47,8 @@ export default function Settings() {
     });
 
     socket.on('connect', () => {
-      socket.emit('register', user.id);
+      // AUTH HARDENING: Pass token to verify identity
+      socket.emit('register', { userId: user.id, token: session.access_token });
     });
 
     socket.on('whatsapp_status', (data) => {
