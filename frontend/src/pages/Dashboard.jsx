@@ -34,6 +34,17 @@ const Dashboard = () => {
   const [contactSearch, setContactSearch] = useState('');
   const fileInputRef = useRef(null);
 
+  const handleManualRefresh = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setRefreshingStatus(true);
+    await fetchDashboardData();
+    // Simulate a brief delay for user feedback
+    setTimeout(() => setRefreshingStatus(false), 800);
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
