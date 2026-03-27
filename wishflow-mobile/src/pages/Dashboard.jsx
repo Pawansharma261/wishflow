@@ -298,14 +298,32 @@ const Dashboard = () => {
                 <ImageIcon size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/10" />
               </div>
               
-              <button 
-                  onClick={handlePostStatus}
-                  disabled={postingStatus || !profile.whatsapp_connected}
-                  className="w-full bg-white text-slate-900 font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-3 disabled:opacity-20 mt-2"
-              >
-                  {postingStatus ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
-                  <span className="uppercase tracking-widest text-xs">Broadcast Status</span>
-              </button>
+              <div className="flex flex-col items-center justify-between gap-4 mt-2">
+                 <div className="flex items-center space-x-2">
+                   <div className="flex -space-x-2.5">
+                     {allContacts.slice(0, 5).map((c, i) => (
+                        <div key={i} className="w-8 h-8 rounded-lg bg-white/10 border border-slate-900 flex items-center justify-center text-[9px] font-bold text-white/50">
+                          {c?.name?.[0] || '?'}
+                        </div>
+                     ))}
+                     {allContacts.length > 5 && (
+                        <div className="w-8 h-8 rounded-lg bg-indigo-500 text-white border border-slate-900 flex items-center justify-center text-[9px] font-bold">
+                          +{allContacts.length - 5}
+                        </div>
+                     )}
+                   </div>
+                   <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Visible to All Contacts</span>
+                 </div>
+
+                 <button 
+                    onClick={handlePostStatus}
+                    disabled={postingStatus || !profile.whatsapp_connected}
+                    className="w-full bg-white text-slate-900 font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-3 disabled:opacity-20"
+                 >
+                    {postingStatus ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
+                    <span className="uppercase tracking-widest text-xs">Broadcast Status</span>
+                 </button>
+              </div>
            </div>
         </div>
 
