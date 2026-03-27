@@ -2,10 +2,19 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Link } from 'react-router-dom';
 import {
-  Sparkles, Mail, Lock, Eye, EyeOff, Phone, User, CreditCard, ArrowRight, ArrowLeft, Camera
+  Sparkles, Mail, Lock, Eye, EyeOff, Phone, User, CreditCard, ArrowRight, ArrowLeft, Camera as CameraIcon
 } from 'lucide-react';
 
-const REDIRECT_URL = window.location.origin;
+const InstagramIcon = (props) => (
+  <svg viewBox="0 0 24 24" width={props.size || 24} height={props.size || 24} stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className={props.className}>
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+  </svg>
+);
+
+import { Capacitor } from '@capacitor/core';
+const REDIRECT_URL = 'com.kptech.wishflow://auth-callback';
 
 const FloatingOrb = ({ className }) => (
   <div className={`absolute rounded-full blur-3xl opacity-30 animate-pulse ${className}`} />
@@ -92,7 +101,7 @@ const Auth = () => {
   };
 
   const handleInstagram = () => {
-    alert('📸 Camera login is pending Meta App Review approval (3-7 business days). Use Google or Email login for now!');
+    alert('📸 Instagram login is pending Meta App Review approval (3-7 business days). Use Google or Email login for now!');
   };
 
   const step1Valid = formData.email && formData.password && formData.confirmPassword && formData.password === formData.confirmPassword;
@@ -257,8 +266,8 @@ const Auth = () => {
               onClick={handleInstagram}
               className="flex items-center justify-center space-x-2.5 bg-gradient-to-r from-pink-500/20 to-violet-600/20 border border-pink-500/30 text-white font-semibold py-3 rounded-2xl hover:bg-pink-500/30 transition-all duration-200 hover:scale-[1.02]"
             >
-              <Camera size={16} className="text-pink-400" />
-              <span className="text-sm">Camera</span>
+              <InstagramIcon size={16} className="text-pink-400" />
+              <span className="text-sm">Instagram</span>
             </button>
           </div>
         </div>

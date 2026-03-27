@@ -22,6 +22,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Primary Deep Link for Supabase -->
+            <intent-filter android:label="filter_auth">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.kptech.wishflow" />
+                <data android:scheme="wishflow" />
+            </intent-filter>
         </activity>
 
         <provider

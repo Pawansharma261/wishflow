@@ -1,4 +1,4 @@
-const { initAuthCreds, BufferJSON } = require('@whiskeysockets/baileys');
+const { initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
 const { Redis } = require('@upstash/redis');
 
 const getRedis = () =>

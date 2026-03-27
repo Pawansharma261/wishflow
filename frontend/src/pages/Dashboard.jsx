@@ -28,14 +28,16 @@ const Dashboard = () => {
     // Setup Socket for Real-time Status Sync
     let socket;
     const setupSocket = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
       
       const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
       socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
       
       socket.on('connect', () => {
-        socket.emit('register', user.id);
+        // AUTH HARDENING: Pass token to verify identity
+        socket.emit('register', { userId: user.id, token: session.access_token });
       });
 
       socket.on('whatsapp_status', (data) => {
@@ -43,6 +45,10 @@ const Dashboard = () => {
           ...prev, 
           whatsapp_connected: (data.status === 'connected') 
         }));
+      });
+
+      socket.on('auth_error', (err) => {
+        console.error('[WS] Auth Error:', err.message);
       });
     };
 

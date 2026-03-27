@@ -62,14 +62,21 @@ const Settings = () => {
     if (code) handleInstagramCallback(code, user.id);
   };
 
-  const initSocket = (uid) => {
+  const initSocket = async (uid) => {
     if (socketRef.current) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    
     const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
     socket.on('connect', () => {
       console.log('[WS] Connected:', socket.id);
-      socket.emit('register', uid);
+      // Pass token to verify identity
+      socket.emit('register', { userId: uid, token: session?.access_token });
+    });
+
+    socket.on('auth_error', (err) => {
+       console.error('[WS] Auth Error:', err.message);
     });
 
     socket.on('whatsapp_qr', async (data) => {

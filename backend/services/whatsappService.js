@@ -3,6 +3,7 @@ const {
   DisconnectReason, 
   Browsers, 
   makeCacheableSignalKeyStore,
+  fetchLatestBaileysVersion, // Added missing import
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const { useRedisAuthState, clearWhatsAppState } = require('./useRedisAuthState');

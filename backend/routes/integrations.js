@@ -1,16 +1,11 @@
-const express = require('express');
-const router = express.Router();
-const axios = require('axios');
-const supabaseAdmin = require('../db/supabaseAdmin');
-const { connectWhatsApp, connectWhatsAppWithPhone, disconnectWhatsApp } = require('../services/whatsappService');
+const requireAuth = require('../middleware/requireAuth');
+const { pairPhoneLimiter, forceResetLimiter } = require('../middleware/rateLimit');
 
 // POST /api/integrations/whatsapp/connect
 // Initiates the Baileys connection which will emit QR code to the user's socket room
-router.post('/whatsapp/connect', async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ error: 'User ID is required' });
-
-  // Get the global Socket.io instance attached to the app in index.js
+// AUTH: REQUIRED
+router.post('/whatsapp/connect', requireAuth, async (req, res) => {
+  const userId = req.user.id; // Correct: Use verified ID from token
   const io = req.app.get('io');
 
   try {
@@ -25,10 +20,11 @@ router.post('/whatsapp/connect', async (req, res) => {
 
 // POST /api/integrations/whatsapp/pair-phone
 // Initiates a phone-number pairing flow (no QR code needed)
-// Returns immediately, then pushes the code via WebSocket 'whatsapp_pairing_code' event
-router.post('/whatsapp/pair-phone', async (req, res) => {
-  const { userId, phoneNumber } = req.body;
-  if (!userId || !phoneNumber) return res.status(400).json({ error: 'userId and phoneNumber are required' });
+// AUTH: REQUIRED + RATE LIMIT (5/min)
+router.post('/whatsapp/pair-phone', requireAuth, pairPhoneLimiter, async (req, res) => {
+  const userId = req.user.id;
+  const { phoneNumber } = req.body;
+  if (!phoneNumber) return res.status(400).json({ error: 'phoneNumber is required' });
 
   const io = req.app.get('io');
   const cleanPhone = phoneNumber.replace(/\D/g, '');
@@ -37,12 +33,11 @@ router.post('/whatsapp/pair-phone', async (req, res) => {
   // Respond immediately so the HTTP connection doesn't timeout on Render free tier
   res.json({ success: true, message: 'Pairing started. Your code will arrive via WebSocket in 10-30s.' });
 
-  // Run pairing in background — push result via WebSocket
+  // Run pairing in background — result is pushed via WebSocket from service layer
   setImmediate(async () => {
     try {
-      const { pairingCode } = await connectWhatsAppWithPhone(userId, cleanPhone, io);
-      console.log(`[Integrations] Pairing code for ${userId}: ${pairingCode}`);
-      if (io) io.to(userId).emit('whatsapp_pairing_code', { code: pairingCode });
+      // FIX: Service sends code via socket directly. No need for extra emitting here.
+      await connectWhatsAppWithPhone(userId, cleanPhone, io);
     } catch (error) {
       console.error('[Integrations] Phone pairing failed:', error.message);
       if (io) io.to(userId).emit('whatsapp_error', { message: error.message });
@@ -52,9 +47,9 @@ router.post('/whatsapp/pair-phone', async (req, res) => {
 
 // POST /api/integrations/whatsapp/disconnect
 // Clear active WhatsApp session and database status
-router.post('/whatsapp/disconnect', async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ error: 'User ID is required' });
+// AUTH: REQUIRED
+router.post('/whatsapp/disconnect', requireAuth, async (req, res) => {
+  const userId = req.user.id;
 
   try {
     await disconnectWhatsApp(userId);
@@ -66,9 +61,9 @@ router.post('/whatsapp/disconnect', async (req, res) => {
 
 // POST /api/integrations/whatsapp/force-reset
 // Aggressively wipes ALL WhatsApp session data including all signal keys via SCAN
-router.post('/whatsapp/force-reset', async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ error: 'User ID is required' });
+// AUTH: REQUIRED + RATE LIMIT (3/5min)
+router.post('/whatsapp/force-reset', requireAuth, forceResetLimiter, async (req, res) => {
+  const userId = req.user.id;
 
   try {
     console.log(`[Integrations] Deep force-reset for ${userId}`);
@@ -89,10 +84,13 @@ router.post('/whatsapp/force-reset', async (req, res) => {
     let cursor = 0;
     let scanned = 0;
     do {
-      const [nextCursor, keys] = await redis.scan(cursor, {
+      const result = await redis.scan(cursor, {
         match: `whatsapp_keys:${userId}:*`,
         count: 100,
       });
+      // The scanner result is [nextCursor, keys[]]
+      const nextCursor = result[0];
+      const keys = result[1];
       cursor = Number(nextCursor);
       if (keys && keys.length > 0) keysToDelete.push(...keys);
       scanned++;
@@ -150,6 +148,11 @@ router.post('/instagram/callback', async (req, res) => {
     console.error('[Integrations] FB OAuth Callback Error:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to complete Facebook OAuth Token exchange.' });
   }
+});
+
+// GET /api/integrations/whatsapp/logs
+router.get('/whatsapp/logs', (req, res) => {
+  res.json({ logs: getLogs() });
 });
 
 module.exports = router;

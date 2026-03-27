@@ -79,19 +79,27 @@ export default function Contacts() {
     const payload = {
       user_id: user.id,
       name: formData.name,
-      phone_number: formData.phone_number,
+      phone: formData.phone_number,
       birthday: formData.occasion === 'birthday' ? formData.occasion_date : null,
       anniversary: formData.occasion === 'anniversary' ? formData.occasion_date : null
     };
 
-    if (formData.id) {
-      await supabase.from('contacts').update(payload).eq('id', formData.id);
-    } else {
-      await supabase.from('contacts').insert([payload]);
+    try {
+      if (formData.id) {
+        const { error } = await supabase.from('contacts').update(payload).eq('id', formData.id);
+        if (error) throw error;
+        alert("Contact updated!");
+      } else {
+        const { error } = await supabase.from('contacts').insert([payload]);
+        if (error) throw error;
+        alert("Contact added!");
+      }
+      
+      setShowForm(false);
+      fetchContacts();
+    } catch (err) {
+      alert("Error saving contact: " + err.message);
     }
-    
-    setShowForm(false);
-    fetchContacts();
   };
 
   const editContact = (c) => {
@@ -179,7 +187,7 @@ export default function Contacts() {
                 </div>
                 <div>
                   <h3 className="font-bold text-white leading-tight">{c.name}</h3>
-                  <p className="text-white/50 text-xs font-mono mt-1">{c.phone_number}</p>
+                  <p className="text-white/50 text-xs font-mono mt-1">{c.phone || c.phone_number}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-2">

@@ -13,10 +13,15 @@ export default function MobileNav() {
   };
 
   // Don't show nav on auth or landing pages
-  if (['/', '/auth', '/privacy'].includes(location.pathname)) return null;
+  if (['/auth', '/privacy'].includes(location.pathname)) return null;
+  // Also don't show on landing page (root path with no session is handled in App.jsx, but here we check pathname)
+  // Actually, App.jsx handles high-level layout. But if we are at root and session is null, we shouldn't see nav.
+  // We can pass the session as a prop to Navbar or just let it render if it's there.
+  // In App.jsx: {session && <Navbar />} so we are safe.
+  // We just need to remove '/' from the exclusion list.
 
   const NAV_ITEMS = [
-    { icon: <LayoutDashboard size={24} />, label: 'Home', to: '/dashboard' },
+    { icon: <LayoutDashboard size={24} />, label: 'Home', to: '/' },
     { icon: <Users size={24} />, label: 'Contacts', to: '/contacts' },
     { icon: <CalendarHeart size={24} />, label: 'Wishes', to: '/wishes' },
     { icon: <SettingsIcon size={24} />, label: 'Settings', to: '/settings' },

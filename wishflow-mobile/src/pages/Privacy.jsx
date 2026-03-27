@@ -24,9 +24,9 @@ const Privacy = () => {
             <h2 className="text-xl font-bold text-slate-900 mb-3">2. Information We Collect</h2>
             <ul className="list-disc list-inside space-y-2">
               <li><strong>Account Information:</strong> Email address and authentication credentials when you register</li>
-              <li><strong>Contact Data:</strong> Names, phone numbers, Camera usernames, and special dates of your contacts that you voluntarily add</li>
+              <li><strong>Contact Data:</strong> Names, phone numbers, Instagram usernames, and special dates of your contacts that you voluntarily add</li>
               <li><strong>Wish Content:</strong> Messages you draft and schedule to be sent</li>
-              <li><strong>API Keys:</strong> Third-party API keys (CallMeBot, Camera) you provide to enable messaging features</li>
+              <li><strong>API Keys:</strong> Third-party API keys (CallMeBot, Instagram) you provide to enable messaging features</li>
               <li><strong>Usage Data:</strong> App usage patterns, features used, and interaction logs</li>
             </ul>
           </section>
@@ -36,19 +36,19 @@ const Privacy = () => {
             <ul className="list-disc list-inside space-y-2">
               <li>To deliver automated birthday and celebration wishes on your behalf</li>
               <li>To schedule and manage your wish calendar</li>
-              <li>To send notifications via WhatsApp and Camera at your chosen times</li>
+              <li>To send notifications via WhatsApp and Instagram at your chosen times</li>
               <li>To improve and personalize the app experience</li>
               <li>To maintain security and prevent fraud</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-slate-900 mb-3">4. Camera & Facebook Data</h2>
-            <p>WishFlow uses the Meta (Facebook/Camera) Graph API to send messages on Camera. We only request the minimum permissions required (<code>instagram_manage_messages</code>, <code>instagram_basic</code>). We do not:</p>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">4. Instagram & Facebook Data</h2>
+            <p>WishFlow uses the Meta (Facebook/Instagram) Graph API to send messages on Instagram. We only request the minimum permissions required (<code>instagram_manage_messages</code>, <code>instagram_basic</code>). We do not:</p>
             <ul className="list-disc list-inside space-y-2 mt-2">
-              <li>Store your Facebook or Camera password</li>
+              <li>Store your Facebook or Instagram password</li>
               <li>Access your private messages beyond what is required to send your scheduled wishes</li>
-              <li>Share Camera data with third parties</li>
+              <li>Share Instagram data with third parties</li>
             </ul>
           </section>
 
@@ -64,7 +64,7 @@ const Privacy = () => {
               <li><strong>Supabase</strong> — Database hosting</li>
               <li><strong>Render</strong> — Backend server hosting</li>
               <li><strong>Vercel</strong> — Frontend hosting</li>
-              <li><strong>Meta (Facebook/Camera)</strong> — Message delivery via Camera</li>
+              <li><strong>Meta (Facebook/Instagram)</strong> — Message delivery via Instagram</li>
               <li><strong>CallMeBot</strong> — WhatsApp message delivery</li>
             </ul>
           </section>
