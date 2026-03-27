@@ -4,7 +4,9 @@ import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift, Loader2, 
 import { Link } from 'react-router-dom';
 import { format, differenceInDays, addYears, isBefore } from 'date-fns';
 import { io } from 'socket.io-client';
+import { RefreshCw, LayoutGrid, Image as ImageIcon } from 'lucide-react';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { apiClient } from '../lib/apiClient';
 
 const getNextOccurrence = (dateStr) => {
   if (!dateStr) return null;
@@ -24,6 +26,45 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [profile, setProfile] = useState({ whatsapp_connected: false, has_instagram: false });
+  const [allContacts, setAllContacts] = useState([]);
+  const [statusDraft, setStatusDraft] = useState({ text: '', mediaUrl: '' });
+  const [postingStatus, setPostingStatus] = useState(false);
+
+  const handleManualRefresh = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setRefreshing(true);
+    await fetchDashboardData();
+    // Simulate a brief delay for user feedback
+    setTimeout(() => setRefreshing(false), 800);
+  };
+
+  const handlePostStatus = async () => {
+    if (!profile.whatsapp_connected) return alert('WhatsApp must be connected.');
+    if (!statusDraft.text && !statusDraft.mediaUrl) return alert('Enter text or image URL.');
+    
+    const recipientPhones = allContacts.map(c => c.phone).filter(p => !!p);
+    if (recipientPhones.length === 0) return alert('No contacts with phone numbers found.');
+
+    setPostingStatus(true);
+    try {
+      const res = await apiClient.post('/api/integrations/whatsapp/post-status', {
+        text: statusDraft.text,
+        mediaUrl: statusDraft.mediaUrl,
+        recipients: recipientPhones
+      });
+      if (res.success) {
+        alert('Status posted! 🚀');
+        setStatusDraft({ text: '', mediaUrl: '' });
+      } else throw new Error(res.error || 'Failed');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setPostingStatus(false);
+    }
+  };
 
   // REALTIME SYNC: Refresh data when anything changes on different devices
   useRealtimeSync({
@@ -116,8 +157,10 @@ const Dashboard = () => {
     // Dynamic Celebration Radar — find the soonest upcoming birthday/anniversary
     const { data: contacts } = await supabase
       .from('contacts')
-      .select('name, birthday, anniversary')
+      .select('name, phone, birthday, anniversary')
       .eq('user_id', user.id);
+    
+    setAllContacts(contacts || []);
 
     let soonestEvent = null;
     let soonestDays = Infinity;
@@ -183,33 +226,87 @@ const Dashboard = () => {
 
         {/* Integration Status Quick Tiles */}
         <div className="grid grid-cols-2 gap-4 mb-8">
-           <Link to="/settings" className={`backdrop-blur-xl border rounded-[2rem] p-5 flex flex-col justify-between h-32 transition-all hover:scale-[1.02] active:scale-95 shadow-2xl ${
+           <Link to="/settings" className={`backdrop-blur-xl border rounded-[2rem] p-5 flex flex-col justify-between h-36 transition-all hover:scale-[1.02] active:scale-95 shadow-2xl relative group ${
              profile.whatsapp_connected 
-             ? 'bg-green-500/10 border-green-500/30 shadow-green-500/10' 
+             ? 'bg-green-500/10 border-green-500/30' 
              : 'bg-white/5 border-white/10'
            }`}>
-              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-green-500 text-white shadow-lg shadow-green-500/40' : 'bg-white/10 text-white/40'}`}>
-                 <Phone size={20} />
+              <div className="flex items-center justify-between w-full">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-green-500 text-white shadow-lg' : 'bg-white/10 text-white/40'}`}>
+                   <Phone size={20} />
+                </div>
+                <button 
+                  onClick={handleManualRefresh}
+                  className={`p-2 rounded-lg transition-all ${refreshing ? 'animate-spin opacity-40' : 'active:scale-90 text-white/20'}`}
+                >
+                  <RefreshCw size={14} />
+                </button>
               </div>
               <div>
                  <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${profile.whatsapp_connected ? 'text-green-400' : 'text-white/40'}`}>WhatsApp</p>
-                 <p className="text-sm font-black text-white">{profile.whatsapp_connected ? 'Connected' : 'Disconnected'}</p>
+                 <p className="text-sm font-black text-white">{profile.whatsapp_connected ? 'Connected' : 'Offline'}</p>
               </div>
            </Link>
            
-           <Link to="/settings" className={`backdrop-blur-xl border rounded-[2rem] p-5 flex flex-col justify-between h-32 transition-all hover:scale-[1.02] active:scale-95 shadow-2xl ${
+           <Link to="/settings" className={`backdrop-blur-xl border rounded-[2rem] p-5 flex flex-col justify-between h-36 transition-all hover:scale-[1.02] active:scale-95 shadow-2xl relative group ${
              profile.has_instagram 
-             ? 'bg-pink-500/10 border-pink-500/30 shadow-pink-500/10' 
+             ? 'bg-pink-500/10 border-pink-500/30' 
              : 'bg-white/5 border-white/10'
            }`}>
-              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${profile.has_instagram ? 'bg-gradient-to-tr from-pink-500 to-purple-600 text-white shadow-lg shadow-pink-500/40' : 'bg-white/10 text-white/40'}`}>
-                 <TrendingUp size={20} />
+              <div className="flex items-center justify-between w-full">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${profile.has_instagram ? 'bg-gradient-to-tr from-pink-500 to-purple-600 text-white shadow-lg' : 'bg-white/10 text-white/40'}`}>
+                   <TrendingUp size={20} />
+                </div>
+                <button 
+                  onClick={handleManualRefresh}
+                  className={`p-2 rounded-lg transition-all ${refreshing ? 'animate-spin opacity-40' : 'active:scale-90 text-white/20'}`}
+                >
+                  <RefreshCw size={14} />
+                </button>
               </div>
               <div>
                  <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${profile.has_instagram ? 'text-pink-400' : 'text-white/40'}`}>Instagram</p>
-                 <p className="text-sm font-black text-white">{profile.has_instagram ? 'Connected' : 'Disconnected'}</p>
+                 <p className="text-sm font-black text-white">{profile.has_instagram ? 'Connected' : 'Offline'}</p>
               </div>
            </Link>
+        </div>
+
+        {/* Status Hub (WhatsApp Stories) */}
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-6 mb-10">
+           <div className="flex items-center space-x-3 mb-6">
+              <div className="w-10 h-10 bg-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-400">
+                <LayoutGrid size={20} />
+              </div>
+              <h2 className="text-xl font-black text-white">Status Hub</h2>
+           </div>
+
+           <div className="space-y-4">
+              <textarea 
+                className="w-full bg-white/5 border border-white/10 rounded-3xl p-5 text-white text-sm h-32 resize-none focus:outline-none focus:border-indigo-500/50 transition-all placeholder-white/10 font-medium"
+                placeholder="What's happening? (Caption for images)"
+                value={statusDraft.text}
+                onChange={e => setStatusDraft({...statusDraft, text: e.target.value})}
+              />
+              <div className="relative">
+                <input 
+                  type="url" 
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white/80 text-xs focus:outline-none focus:border-indigo-500 transition-all placeholder-white/5 font-medium pr-12"
+                  placeholder="Attach Image URL..."
+                  value={statusDraft.mediaUrl}
+                  onChange={e => setStatusDraft({...statusDraft, mediaUrl: e.target.value})}
+                />
+                <ImageIcon size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/10" />
+              </div>
+              
+              <button 
+                  onClick={handlePostStatus}
+                  disabled={postingStatus || !profile.whatsapp_connected}
+                  className="w-full bg-white text-slate-900 font-black py-4 rounded-2xl shadow-xl active:scale-95 transition-all flex items-center justify-center space-x-3 disabled:opacity-20 mt-2"
+              >
+                  {postingStatus ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
+                  <span className="uppercase tracking-widest text-xs">Broadcast Status</span>
+              </button>
+           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-10">

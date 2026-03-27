@@ -31,6 +31,7 @@ const Scheduler = () => {
     contact_id: '',
     occasion_type: 'birthday',
     message: '',          // DB column is now 'message'
+    media_url: '',        // NEW: URL for images
     scheduled_for: '',    // DB column is now 'scheduled_for'
     channels: ['whatsapp'],
     is_recurring: false,
@@ -250,11 +251,28 @@ const Scheduler = () => {
               </button>
             </div>
             <textarea 
-              className="input-field h-48 resize-none p-6 text-lg"
+              className="input-field h-40 resize-none p-6 text-lg"
               placeholder="Start writing your heart out..."
               value={formData.message}
               onChange={e => setFormData({...formData, message: e.target.value})}
             />
+            
+            <div className="pt-2 animate-fade-in">
+              <label className="text-xs font-black text-slate-400 block mb-3 px-2 uppercase tracking-[0.2em]">Add Media (Optional Image URL)</label>
+              <div className="relative group">
+                <input 
+                  type="url" 
+                  className="input-field h-14 pl-12 pr-6 text-sm font-medium focus:ring-4 focus:ring-brand-rose/10 transition-all"
+                  placeholder="https://example.com/birthday-card.jpg"
+                  value={formData.media_url}
+                  onChange={e => setFormData({...formData, media_url: e.target.value})}
+                />
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-rose transition-colors">
+                  <Sparkles size={18} />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-3 px-2 font-bold uppercase tracking-widest">When media is provided, we send it as an image with your text as the caption.</p>
+            </div>
           </div>
         )}
 

@@ -35,6 +35,7 @@ const Scheduler = () => {
     contact_id: '',
     occasion_type: 'birthday',
     message: '',          // DB column is now 'message'
+    media_url: '',        // NEW: URL for images
     scheduled_for: '',    // DB column is now 'scheduled_for'
     channels: ['whatsapp'],
     is_recurring: false,
@@ -348,11 +349,28 @@ const Scheduler = () => {
               </button>
             </div>
             <textarea 
-              className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-white text-lg focus:outline-none focus:border-brand-rose/50 transition-all font-medium h-64 resize-none leading-relaxed"
+              className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-white text-lg focus:outline-none focus:border-brand-rose/50 transition-all font-medium h-48 resize-none leading-relaxed"
               placeholder="Tell them something beautiful..."
               value={formData.message}
               onChange={e => setFormData({...formData, message: e.target.value})}
             />
+            
+            <div className="pt-2">
+              <label className="text-[10px] font-black text-white/30 block mb-3 px-1 uppercase tracking-widest">Add Media (Image URL)</label>
+              <div className="relative group">
+                <input 
+                  type="url" 
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white/80 text-sm focus:outline-none focus:border-brand-rose transition-all placeholder-white/10 font-medium pr-12"
+                  placeholder="https://example.com/card.jpg"
+                  value={formData.media_url}
+                  onChange={e => setFormData({...formData, media_url: e.target.value})}
+                />
+                <div className="absolute right-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-brand-rose/50 transition-colors">
+                  <Sparkles size={18} />
+                </div>
+              </div>
+              <p className="text-[10px] text-white/20 mt-3 px-1 font-medium italic">Sent as an image with your text as the caption.</p>
+            </div>
           </motion.div>
         )}
 
