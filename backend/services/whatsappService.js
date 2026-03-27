@@ -3,7 +3,6 @@ const {
   DisconnectReason, 
   Browsers, 
   makeCacheableSignalKeyStore,
-  fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const { useRedisAuthState, clearWhatsAppState } = require('./useRedisAuthState');
@@ -33,38 +32,36 @@ const getWhatsAppStatus = (userId) => {
 };
 
 /**
- * connectWhatsAppWithPhone - UNIFIED 3-IN-1 FIX
- * Resolves 405 rejection, Couldn't Link desync, and Logging In hang.
+ * connectWhatsAppWithPhone - IRONCLAD VERSION
+ * Hardcoded stable version + Handshake-Sync logic.
  */
 const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-  console.log(`[WA:unified] 🛠️ Starting Hardened Session for ${userId}`);
+  console.log(`[WA:iron] ⚡ Starting Isolated Link for ${userId}`);
 
   const existing = sessions.get(userId);
   if (existing) { try { existing.end(); } catch(e) {} sessions.delete(userId); }
   connecting.delete(userId);
   phonePairing.add(userId);
 
-  // 1. FRESH ATOMIC START
+  // 1. Mandatory Clean Start
   await clearWhatsAppState(userId);
   const { state, saveCreds } = await useRedisAuthState(userId);
 
-  // 2. DYNAMIC VERSIONING (Fixes 405)
-  const { version } = await fetchLatestBaileysVersion();
-  
+  // 2. Ironclad Socket Config (Reverting to high-success baseline)
   const sock = makeWASocket({
-    version,
+    version: [2, 3000, 1015901307],
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     logger,
-    browser: Browsers.macOS('Chrome'), // Highest Trust Identity
-    // SYNC SHIELD (Fixes Logging In Hang)
+    browser: Browsers.macOS('Desktop'), // High Trust Desktop Identity
     syncFullHistory: false,
     shouldSyncHistoryMessage: () => false,
     markOnlineOnConnect: true,
     connectTimeoutMs: 120000,
+    keepAliveIntervalMs: 25000,
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -72,29 +69,30 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   return new Promise((resolve, reject) => {
     let resolved = false;
 
-    // FIXING "COULDNT LINK" - Pre-emptive request with Handshake Barrier
+    // Trigger Pairing Code exactly 3 seconds after construction
+    // This allows background handshaking to stabilize without generating a QR identity yet.
     setTimeout(async () => {
         if (resolved) return;
         try {
-            console.log(`[WA:unified] 🔑 Requesting isolated pairing code...`);
+            console.log(`[WA:iron] 📲 Requesting pairing code for ${cleanPhone}`);
             const code = await sock.requestPairingCode(cleanPhone);
             const raw = String(code).replace(/-/g, '');
             const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
             
             if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
-            console.log(`[WA:unified] ✅ Code Ready: ${formatted}`);
+            console.log(`[WA:iron] ✅ PAIRING CODE: ${formatted}`);
         } catch (err) {
-            console.error(`[WA:unified] ❌ Rejection:`, err.message);
-            if (!resolved) { resolved = true; reject(err); }
+            console.error(`[WA:iron] ❌ Link Request Failed:`, err.message);
+            if (!resolved) { resolved = true; reject(err); phonePairing.delete(userId); }
         }
-    }, 4000); // 4-second settle time is critical for Render IP reputation
+    }, 3000);
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect } = update;
-      console.log(`[WA:unified] ${userId} | ${connection || 'processing'}`);
+      console.log(`[WA:iron] ${userId} | ${connection || 'handshaking'}`);
 
       if (connection === 'open') {
-        console.log(`[WA:unified] 🎉 UNIFIED SUCCESS`);
+        console.log(`[WA:iron] 🎉 LINK SUCCESS`);
         resolved = true;
         phonePairing.delete(userId);
         sessions.set(userId, sock);
@@ -104,7 +102,7 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
       } else if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-
+        
         if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: statusCode });
         
         phonePairing.delete(userId);
@@ -127,18 +125,18 @@ const connectWhatsApp = async (userId, io) => {
   const existing = sessions.get(userId);
   if (existing) { try { existing.end(); } catch(e) {} sessions.delete(userId); }
   connecting.delete(userId);
+
   try {
     const p = (async () => {
       const { state, saveCreds } = await useRedisAuthState(userId);
-      const { version } = await fetchLatestBaileysVersion();
       const sock = makeWASocket({
-        version,
+        version: [2, 3000, 1015901307],
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         logger,
-        browser: Browsers.macOS('Chrome'),
+        browser: Browsers.macOS('Desktop'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
       });
@@ -162,7 +160,7 @@ const connectWhatsApp = async (userId, io) => {
 const sendWhatsAppWish = async (userId, targetPhone, text) => {
   let sock = sessions.get(userId);
   if (!sock) { try { sock = await connecting.get(userId); } catch(e) {} sock = sock || sessions.get(userId); }
-  if (!sock) throw new Error(`[WA] Session Inactive`);
+  if (!sock) throw new Error(`[WA] Session Null`);
   const jid = targetPhone.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
   await sock.sendMessage(jid, { text });
 };
