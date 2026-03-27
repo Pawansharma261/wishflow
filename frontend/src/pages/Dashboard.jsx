@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift, Search, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift, Search, CheckCircle2, Calendar } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format, differenceInDays, addYears, isBefore } from 'date-fns';
 import { io } from 'socket.io-client';
