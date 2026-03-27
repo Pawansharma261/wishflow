@@ -72,6 +72,7 @@ const App = () => {
             <Route path="/wishes" element={session ? <MyWishes /> : <Navigate to="/auth" />} />
             <Route path="/settings" element={session ? <Settings /> : <Navigate to="/auth" />} />
             <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/" />} />
+            <Route path="/login" element={<Navigate to="/auth" />} />
             <Route path="/privacy" element={<Privacy />} />
           </Routes>
         </main>

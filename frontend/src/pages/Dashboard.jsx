@@ -19,6 +19,8 @@ const getNextOccurrence = (dateStr) => {
 };
 
 const Dashboard = () => {
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState({ whatsapp_connected: false, has_instagram: false });
   const [userId, setUserId] = useState(null);
   const [stats, setStats] = useState({ totalContacts: 0, sentWishes: 0, pendingWishes: 0 });
   const [upcomingWishes, setUpcomingWishes] = useState([]);
@@ -193,6 +195,15 @@ const Dashboard = () => {
     { title: 'Wishes Sent', value: stats.sentWishes, icon: <Send className="text-green-500" />, color: 'bg-green-50', link: '/wishes?filter=sent' },
     { title: 'Pending', value: stats.pendingWishes, icon: <Clock className="text-orange-500" />, color: 'bg-orange-50', link: '/wishes?filter=pending' },
   ];
+
+  if (loading) {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-[70vh]">
+           <RefreshCw size={40} className="text-brand-rose animate-spin mb-4" />
+           <p className="text-white/40 font-black uppercase tracking-widest text-xs">Syncing Board...</p>
+        </div>
+     );
+  }
 
   return (
     <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
