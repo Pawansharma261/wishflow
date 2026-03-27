@@ -237,7 +237,7 @@ const Dashboard = () => {
         const diff = differenceInDays(birthday, new Date());
         if (diff < soonestDays) {
           soonestDays = diff;
-          soonestEvent = { name: c.name, date: birthday, type: 'Birthday ≡ƒÄé' };
+          soonestEvent = { name: c.name, date: birthday, type: 'Birthday 🎂' };
         }
       }
       if (anniversary) {
@@ -619,7 +619,7 @@ const Dashboard = () => {
             )) : (
               <div className="bg-slate-100/50 rounded-3xl p-10 text-center border-2 border-dashed border-slate-200">
                 <p className="text-slate-400 font-medium">No wishes scheduled yet.</p>
-                <Link to="/scheduler" className="text-brand-rose font-bold block mt-2 text-sm">Schedule one now ΓåÆ</Link>
+                <Link to="/scheduler" className="text-brand-rose font-bold block mt-2 text-sm">Schedule one now →</Link>
               </div>
             )}
           </div>
@@ -635,7 +635,7 @@ const Dashboard = () => {
                   <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1">{radarEvent.type}</p>
                   <h3 className="text-2xl font-black mb-1">{radarEvent.name}</h3>
                   <p className="text-white/80 text-sm font-medium mb-6">
-                    {radarEvent.daysAway === 0 ? '≡ƒÄë Today!' : `In ${radarEvent.daysAway} day${radarEvent.daysAway > 1 ? 's' : ''} ΓÇö ${format(radarEvent.date, 'MMM do')}`}
+                    {radarEvent.daysAway === 0 ? '🎉 Today!' : `In ${radarEvent.daysAway} day${radarEvent.daysAway > 1 ? 's' : ''} — ${format(radarEvent.date, 'MMM do')}`}
                   </p>
                 </>
               ) : (

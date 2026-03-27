@@ -42,17 +42,21 @@ router.post('/bulk-schedule', async (req, res) => {
   }
 
   try {
+    // 1. Fetch a fallback contact ID to satisfy the NOT NULL constraint if needed
+    const { data: contact } = await supabaseAdmin.from('contacts').select('id').eq('user_id', req.user.id).limit(1).single();
+    if (!contact && postType === 'status') {
+       return res.status(400).json({ error: 'Please add at least one contact first to initialize the status hub.' });
+    }
+
     const items = recipients.map(phone => {
       return {
         user_id: req.user.id,
-        contact_id: null, // Basic version
-        contact_name: (phone === 'status@broadcast' ? 'WhatsApp Status' : 'Broadcast Target'),
-        contact_phone: phone,
-        message: text,
+        contact_id: contact?.id || null, // Fallback for schema compliance
+        occasion_type: 'custom', // Limited by ENUM occasion_type
+        wish_message: text,
         media_url: mediaUrl,
-        scheduled_for: scheduledAt,
+        scheduled_datetime: scheduledAt,
         status: 'pending',
-        occasion_type: postType === 'status' ? 'status_story' : 'custom_broadcast',
         channels: ['whatsapp']
       };
     });
