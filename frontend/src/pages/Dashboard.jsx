@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift, Search, CheckCircle2, Calendar } from 'lucide-react';
+import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format, differenceInDays, addYears, isBefore } from 'date-fns';
 import { io } from 'socket.io-client';
-import { RefreshCw, LayoutGrid, Image as ImageIcon, MessageCircle, X, Paperclip } from 'lucide-react';
+import { RefreshCw, LayoutGrid, Image as ImageIcon, MessageCircle, X, Paperclip, Search, CheckCircle2, Calendar } from 'lucide-react';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { apiClient } from '../lib/apiClient';
 import { uploadMedia } from '../lib/storage';
@@ -33,22 +33,6 @@ const Dashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const fileInputRef = useRef(null);
-
-  const filteredContacts = allContacts.filter(c => 
-    c.name?.toLowerCase().includes(contactSearch.toLowerCase()) ||
-    c.phone?.includes(contactSearch)
-  );
-
-  const handleManualRefresh = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    setRefreshingStatus(true);
-    await fetchDashboardData();
-    // Simulate a brief delay for user feedback
-    setTimeout(() => setRefreshingStatus(false), 800);
-  };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -81,10 +65,9 @@ const Dashboard = () => {
   };
 
   const handlePostStatus = async () => {
-    if (!profile.whatsapp_connected) return alert('WhatsApp must be connected to post status.');
+    if (!profile.whatsapp_connected && !statusDraft.scheduledAt) return alert('WhatsApp must be connected to post status immediately.');
     if (!statusDraft.text && !statusDraft.mediaUrl) return alert('Please enter text or choose an image.');
     
-    // Default to all contacts if none selected
     const recipientPhones = statusDraft.recipients.length > 0 
       ? statusDraft.recipients 
       : allContacts.map(c => c.phone).filter(p => !!p);
@@ -94,7 +77,6 @@ const Dashboard = () => {
     setPostingStatus(true);
     try {
       if (statusDraft.scheduledAt) {
-        // SCHEDULING FLOW: Create pending wishes for each recipient
         const utcScheduledDate = new Date(statusDraft.scheduledAt).toISOString();
         const items = recipientPhones.map(phone => {
           const contact = allContacts.find(c => c.phone === phone);
@@ -115,10 +97,9 @@ const Dashboard = () => {
         const { error } = await supabase.from('wishes').insert(items);
         if (error) throw error;
         
-        alert(`Successfully scheduled status for ${recipientPhones.length} contact(s)! 📅`);
+        alert(`Successfully scheduled for ${recipientPhones.length} contact(s)! 📅`);
         setStatusDraft({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
       } else {
-        // IMMEDIATE FLOW
         const res = await apiClient.post('/api/integrations/whatsapp/post-status', {
           text: statusDraft.text,
           mediaUrl: statusDraft.mediaUrl,
@@ -227,7 +208,7 @@ const Dashboard = () => {
     // Dynamic Celebration Radar
     const { data: contacts } = await supabase
       .from('contacts')
-      .select('name, phone, birthday, anniversary')
+      .select('id, name, phone, birthday, anniversary')
       .eq('user_id', user.id);
     
     setAllContacts(contacts || []);
@@ -241,14 +222,14 @@ const Dashboard = () => {
         const diff = differenceInDays(birthday, new Date());
         if (diff < soonestDays) {
           soonestDays = diff;
-          soonestEvent = { name: c.name, date: birthday, type: 'Birthday 🎂' };
+          soonestEvent = { name: c.name, date: birthday, type: 'Birthday ≡ƒÄé' };
         }
       }
       if (anniversary) {
         const diff = differenceInDays(anniversary, new Date());
         if (diff < soonestDays) {
           soonestDays = diff;
-          soonestEvent = { name: c.name, date: anniversary, type: 'Anniversary 💍' };
+          soonestEvent = { name: c.name, date: anniversary, type: 'Anniversary ≡ƒÆì' };
         }
       }
     }
@@ -262,21 +243,12 @@ const Dashboard = () => {
     { title: 'Pending', value: stats.pendingWishes, icon: <Clock className="text-orange-500" />, color: 'bg-orange-50', link: '/wishes?filter=pending' },
   ];
 
-  if (loading) {
-     return (
-        <div className="flex flex-col items-center justify-center min-h-[70vh]">
-           <RefreshCw size={40} className="text-brand-rose animate-spin mb-4" />
-           <p className="text-white/40 font-black uppercase tracking-widest text-xs">Syncing Board...</p>
-        </div>
-     );
-  }
-
   return (
     <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-10">
         <div>
           <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight mb-2">
-            Hey there! 👋
+            Hey there! ≡ƒæï
           </h1>
           <p className="text-white/60 font-medium">Your automated celebration assistant is ready.</p>
         </div>
@@ -286,59 +258,56 @@ const Dashboard = () => {
         </Link>
       </div>
 
+      {/* Integration Status Quick Tiles */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
          <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center justify-between transition-all hover:scale-[1.03] active:scale-95 shadow-lg relative group ${
            profile.whatsapp_connected 
            ? 'bg-green-600/90 border-green-400/50 shadow-green-900/40' 
            : 'bg-white/5 border-white/10'
          }`}>
-            <div className="flex flex-col items-end gap-2">
-                <div className="flex items-center space-x-3">
-                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
-                      <Send size={18} />
-                   </div>
-                   <div>
-                      <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.whatsapp_connected ? 'text-white/80' : 'text-white/40'}`}>WhatsApp</p>
-                      <p className={`text-xs font-black ${profile.whatsapp_connected ? 'text-white' : 'text-white/60'}`}>{profile.whatsapp_connected ? 'CONNECTED' : 'OFFLINE'}</p>
-                   </div>
-                </div>
-                <button 
-                  onClick={(e) => { e.preventDefault(); handleManualRefresh(); }}
-                  className="bg-white/10 hover:bg-white/20 text-[9px] font-black text-white px-3 py-1.5 rounded-lg uppercase tracking-widest flex items-center space-x-1.5 transition-all border border-white/10"
-                >
-                  <RefreshCw size={10} className={refreshingStatus ? 'animate-spin' : ''} />
-                  <span>{refreshingStatus ? 'Refreshing...' : 'Force Sync'}</span>
-                </button>
-             </div>
-          </Link>
-          
-          <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-6 flex items-center justify-between transition-all hover:scale-[1.03] active:scale-95 shadow-lg relative group ${
-            profile.has_instagram 
-            ? 'bg-gradient-to-tr from-pink-600 to-purple-600 border-pink-400/50 shadow-pink-900/40' 
-            : 'bg-white/5 border-white/10'
-          }`}>
-             <div className="flex flex-col items-end gap-2 w-full">
-                <div className="flex items-center justify-between w-full">
-                   <div className="flex items-center space-x-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.has_instagram ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
-                         <TrendingUp size={18} />
-                      </div>
-                      <div>
-                         <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.has_instagram ? 'text-white/80' : 'text-white/40'}`}>Instagram</p>
-                         <p className={`text-xs font-black ${profile.has_instagram ? 'text-white' : 'text-white/60'}`}>{profile.has_instagram ? 'CONNECTED' : 'OFFLINE'}</p>
-                      </div>
-                   </div>
-                </div>
-                <button 
-                  onClick={(e) => { e.preventDefault(); handleManualRefresh(); }}
-                  className="bg-white/10 hover:bg-white/20 text-[9px] font-black text-white px-3 py-1.5 rounded-lg uppercase tracking-widest flex items-center space-x-1.5 transition-all border border-white/10 ml-auto"
-                >
-                  <RefreshCw size={10} className={refreshingStatus ? 'animate-spin' : ''} />
-                  <span>{refreshingStatus ? 'Refreshing...' : 'Force Sync'}</span>
-                </button>
-             </div>
-          </Link>
-          {/* Status Hub (WhatsApp Stories) */}
+            <div className="flex items-center space-x-3">
+               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
+                  <Send size={18} />
+               </div>
+               <div>
+                  <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.whatsapp_connected ? 'text-white/80' : 'text-white/40'}`}>WhatsApp</p>
+                  <p className={`text-xs font-black ${profile.whatsapp_connected ? 'text-white' : 'text-white/60'}`}>{profile.whatsapp_connected ? 'CONNECTED' : 'OFFLINE'}</p>
+               </div>
+            </div>
+            <button 
+              onClick={handleManualRefresh}
+              className={`p-2 rounded-lg transition-all ${profile.whatsapp_connected ? 'hover:bg-white/20 text-white' : 'hover:bg-white/10 text-white/40'}`}
+              title="Refresh Status"
+            >
+              <RefreshCw size={14} className={refreshingStatus ? 'animate-spin' : ''} />
+            </button>
+         </Link>
+         
+         <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center justify-between transition-all hover:scale-[1.03] active:scale-95 shadow-lg relative group ${
+           profile.has_instagram 
+           ? 'bg-gradient-to-tr from-pink-600 to-purple-600 border-pink-400/50 shadow-pink-900/40' 
+           : 'bg-white/5 border-white/10'
+         }`}>
+            <div className="flex items-center space-x-3">
+               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.has_instagram ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
+                  <TrendingUp size={18} />
+               </div>
+               <div>
+                  <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.has_instagram ? 'text-white/80' : 'text-white/40'}`}>Instagram</p>
+                  <p className={`text-xs font-black ${profile.has_instagram ? 'text-white' : 'text-white/60'}`}>{profile.has_instagram ? 'CONNECTED' : 'OFFLINE'}</p>
+               </div>
+            </div>
+            <button 
+              onClick={handleManualRefresh}
+              className={`p-2 rounded-lg transition-all ${profile.has_instagram ? 'hover:bg-white/20 text-white' : 'hover:bg-white/10 text-white/40'}`}
+              title="Refresh Status"
+            >
+              <RefreshCw size={14} className={refreshingStatus ? 'animate-spin' : ''} />
+            </button>
+         </Link>
+      </div>
+
+      {/* Status Hub (WhatsApp Stories) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         <div className="lg:col-span-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] -z-10 group-hover:bg-indigo-500/10 transition-colors" />
@@ -417,7 +386,6 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* NEW: Contact Picker Section */}
             <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
                <div className="flex items-center justify-between mb-4 px-2">
                  <div className="flex items-center space-x-2">
@@ -467,7 +435,7 @@ const Dashboard = () => {
                   >
                      All Contacts
                   </button>
-                  {filteredContacts.map((c) => (
+                  {allContacts.filter(c => c.name?.toLowerCase().includes(contactSearch.toLowerCase())).map((c) => (
                     <button 
                        key={c.phone}
                        onClick={() => toggleRecipient(c.phone)}
@@ -537,8 +505,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         {widgets.map((w, i) => (
           <Link to={w.link} key={i} className="card flex items-center space-x-6 hover:scale-105 transition-all shadow-xl hover:shadow-2xl cursor-pointer">
@@ -555,10 +521,10 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         <div className="lg:col-span-2 space-y-8">
-          <div className="flex items-center justify-between px-2">
-            <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Upcoming Scheduled</h2>
-            <Link to="/wishes" className="text-brand-rose font-black text-[10px] uppercase tracking-widest flex items-center hover:translate-x-1 transition-transform bg-white/5 px-4 py-2 rounded-xl border border-white/10">
-              View All <ChevronRight size={14} className="ml-1" />
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black text-white">Upcoming Scheduled</h2>
+            <Link to="/wishes" className="text-brand-rose font-bold text-sm flex items-center hover:translate-x-1 transition-transform">
+              View All <ChevronRight size={16} />
             </Link>
           </div>
           
@@ -567,11 +533,11 @@ const Dashboard = () => {
               <div key={wish.id} className="card flex items-center justify-between hover-lift">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-xl">
-                    {wish.occasion_type === 'birthday' ? '🎂' : wish.occasion_type === 'christmas' ? '🎄' : wish.occasion_type === 'diwali' ? '🪔' : '✨'}
+                    {wish.occasion_type === 'birthday' ? '≡ƒÄé' : wish.occasion_type === 'christmas' ? '≡ƒÄä' : wish.occasion_type === 'diwali' ? '≡ƒ¬ö' : 'Γ£¿'}
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || '—'}</h4>
-                    <p className="text-slate-500 text-sm capitalize">{wish.occasion_type} • {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, h:mm a') : '—'}</p>
+                    <h4 className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || 'ΓÇö'}</h4>
+                    <p className="text-slate-500 text-sm capitalize">{wish.occasion_type} ΓÇó {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, h:mm a') : 'ΓÇö'}</p>
                   </div>
                 </div>
                 <div className="flex -space-x-2">
@@ -584,39 +550,38 @@ const Dashboard = () => {
               </div>
             )) : (
               <div className="bg-slate-100/50 rounded-3xl p-10 text-center border-2 border-dashed border-slate-200">
-                <p className="text-slate-400 font-medium font-bold uppercase tracking-widest text-[10px]">No wishes scheduled yet.</p>
-                <Link to="/scheduler" className="text-brand-rose font-black block mt-2 text-xs uppercase tracking-tighter">Schedule one now →</Link>
+                <p className="text-slate-400 font-medium">No wishes scheduled yet.</p>
+                <Link to="/scheduler" className="text-brand-rose font-bold block mt-2 text-sm">Schedule one now ΓåÆ</Link>
               </div>
             )}
           </div>
         </div>
 
         <div className="space-y-8">
-          <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Celebration Radar</h2>
-          <div className="bg-gradient-brand rounded-[2.5rem] p-8 text-white relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -z-10 group-hover:bg-white/20 transition-colors" />
+          <h2 className="text-2xl font-black text-white">Celebration Radar</h2>
+          <div className="bg-gradient-brand rounded-[2.5rem] p-8 text-white relative overflow-hidden">
             <div className="relative z-10">
               {radarEvent ? (
                 <>
                   <Gift className="mb-4 text-white/80" size={32} />
-                  <p className="text-white/70 text-xs font-black uppercase tracking-widest mb-1 leading-none">{radarEvent.type}</p>
-                  <h3 className="text-2xl font-black mb-1 tracking-tighter uppercase">{radarEvent.name}</h3>
-                  <p className="text-white/80 text-sm font-medium mb-8">
-                    {radarEvent.daysAway === 0 ? '🎉 Today!' : `In ${radarEvent.daysAway} day${radarEvent.daysAway > 1 ? 's' : ''} — ${format(radarEvent.date, 'MMM do')}`}
+                  <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1">{radarEvent.type}</p>
+                  <h3 className="text-2xl font-black mb-1">{radarEvent.name}</h3>
+                  <p className="text-white/80 text-sm font-medium mb-6">
+                    {radarEvent.daysAway === 0 ? '≡ƒÄë Today!' : `In ${radarEvent.daysAway} day${radarEvent.daysAway > 1 ? 's' : ''} ΓÇö ${format(radarEvent.date, 'MMM do')}`}
                   </p>
                 </>
               ) : (
                 <>
                   <TrendingUp className="mb-4 text-white/80" size={32} />
-                  <h3 className="text-2xl font-black mb-2 tracking-tighter uppercase">No Upcoming Events</h3>
-                  <p className="text-white/80 text-sm font-medium mb-8">Add contacts with birthdays to see celebrations here.</p>
+                  <h3 className="text-2xl font-black mb-2">No Upcoming Events</h3>
+                  <p className="text-white/80 text-sm font-medium mb-6">Add contacts with birthdays & anniversaries to see celebrations here.</p>
                 </>
               )}
-              <Link to={radarEvent ? '/scheduler' : '/contacts'} className="bg-white text-brand-rose font-black py-4 px-6 rounded-3xl w-full block text-center hover:scale-105 transition-transform active:scale-95 shadow-xl shadow-black/10 uppercase tracking-widest text-xs">
+              <Link to={radarEvent ? '/scheduler' : '/contacts'} className="bg-white text-brand-rose font-bold py-3 px-6 rounded-2xl w-full block text-center hover:scale-105 transition-transform active:scale-95">
                 {radarEvent ? 'Schedule a Wish' : 'Add Contacts'}
               </Link>
             </div>
-            <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] bg-pink-400/20 rounded-full blur-3xl opacity-50" />
+            <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] bg-pink-400/20 rounded-full blur-3xl" />
           </div>
         </div>
       </div>
@@ -625,4 +590,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
