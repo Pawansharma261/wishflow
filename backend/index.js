@@ -102,8 +102,9 @@ app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/wishes', require('./routes/wishes'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/scheduler', require('./routes/scheduler'));
-// New integration routes
+// New integration & storage routes
 app.use('/api/integrations', require('./routes/integrations'));
+app.use('/api/storage', require('./routes/storage'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

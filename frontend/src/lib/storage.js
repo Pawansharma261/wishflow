@@ -1,7 +1,9 @@
 import { supabase } from './supabaseClient';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
+
 /**
- * Uploads a file to Supabase Storage
+ * Uploads a file to Supabase Storage via Backend Proxy
  * @param {File} file The file object from input
  * @returns {Promise<string>} Public URL of the uploaded image
  */
@@ -14,27 +16,23 @@ export const uploadMedia = async (file) => {
   }
 
   const { data: { user } } = await supabase.auth.getUser();
-  const userId = user?.id || 'anonymous'; // RLS usually prefers authenticated paths
+  const userId = user?.id || 'anonymous';
 
-  const fileExt = file.name.split('.').pop();
-  const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-  const filePath = `uploads/${userId}/${fileName}`; // Structured path for better RLS control
+  // Prepare FormData for the backend proxy
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('userId', userId);
 
-  const { error: uploadError } = await supabase.storage
-    .from('wishing-media')
-    .upload(filePath, file);
+  const response = await fetch(`${BACKEND_URL}/api/storage/upload`, {
+    method: 'POST',
+    body: formData
+  });
 
-  if (uploadError) {
-    throw new Error(`Upload failed: ${uploadError.message}. (Tip: Ensure RLS policy allows 'INSERT' on 'wishing-media' for authenticated users)`);
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(result.message || 'Upload proxy failed');
   }
 
-  const { data } = supabase.storage
-    .from('wishing-media')
-    .getPublicUrl(filePath);
-
-  if (!data?.publicUrl) {
-    throw new Error('Failed to generate public URL for uploaded media.');
-  }
-
-  return data.publicUrl;
+  return result.publicUrl;
 };
