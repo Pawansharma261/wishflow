@@ -338,7 +338,7 @@ const Dashboard = () => {
                 </button>
              </div>
           </Link>
-        {/* Status Hub (WhatsApp Stories) */}
+          {/* Status Hub (WhatsApp Stories) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         <div className="lg:col-span-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] -z-10 group-hover:bg-indigo-500/10 transition-colors" />
@@ -535,7 +535,8 @@ const Dashboard = () => {
               Open Scheduler
            </Link>
         </div>
-       </div>
+      </div>
+
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
