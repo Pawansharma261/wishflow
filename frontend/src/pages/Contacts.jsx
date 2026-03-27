@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Users, Plus, Search, Trash2, Edit2, Phone, Instagram, Calendar, ChevronDown, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 // ─── Country Data ───────────────────────────────────────────────────────────
 const COUNTRIES = [
@@ -155,6 +156,7 @@ const CountryCodePicker = ({ selected, onChange }) => {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 const Contacts = () => {
+  const [userId, setUserId] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -168,10 +170,17 @@ const Contacts = () => {
     instagram_username: '', birthday: '', anniversary: '', callmebot_api_key: ''
   });
 
+  // REALTIME SYNC: Refresh data when anything changes on different devices
+  useRealtimeSync({
+    userId,
+    onContactsChange: () => fetchContacts(),
+  });
+
   useEffect(() => { fetchContacts(); }, []);
 
   const fetchContacts = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (user) setUserId(user.id);
     const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
     if (data) setContacts(data);
     setLoading(false);

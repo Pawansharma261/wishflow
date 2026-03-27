@@ -4,6 +4,7 @@ import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift } from 'lu
 import { Link } from 'react-router-dom';
 import { format, differenceInDays, addYears, isBefore } from 'date-fns';
 import { io } from 'socket.io-client';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 const getNextOccurrence = (dateStr) => {
   if (!dateStr) return null;
@@ -16,11 +17,20 @@ const getNextOccurrence = (dateStr) => {
 };
 
 const Dashboard = () => {
+  const [userId, setUserId] = useState(null);
   const [stats, setStats] = useState({ totalContacts: 0, sentWishes: 0, pendingWishes: 0 });
   const [upcomingWishes, setUpcomingWishes] = useState([]);
   const [radarEvent, setRadarEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState({ whatsapp_connected: false, has_instagram: false });
+
+  // REALTIME SYNC: Refresh data when anything changes on different devices
+  useRealtimeSync({
+    userId,
+    onUserChange: () => fetchDashboardData(),
+    onContactsChange: () => fetchDashboardData(),
+    onWishesChange: () => fetchDashboardData(),
+  });
 
   useEffect(() => {
     fetchDashboardData();
@@ -31,20 +41,28 @@ const Dashboard = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) return;
+      setUserId(user.id);
       
       const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
       socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
       
       socket.on('connect', () => {
-        // AUTH HARDENING: Pass token to verify identity
-        socket.emit('register', { userId: user.id, token: session.access_token });
+        // AUTH HARDENING: Register with session token
+        if (session.access_token) {
+           socket.emit('register', { userId: user.id, token: session.access_token });
+        }
       });
 
       socket.on('whatsapp_status', (data) => {
-        setProfile(prev => ({ 
-          ...prev, 
-          whatsapp_connected: (data.status === 'connected') 
-        }));
+        // STABILITY FIX: Keep status connected unless real logout
+        if (data.status === 'connected') {
+           setProfile(prev => ({ ...prev, whatsapp_connected: true }));
+        } else if (data.status === 'disconnected') {
+           const logoutReasons = [401, '401', 'loggedOut'];
+           if (logoutReasons.includes(data.reason)) {
+              setProfile(prev => ({ ...prev, whatsapp_connected: false }));
+           }
+        }
       });
 
       socket.on('auth_error', (err) => {
@@ -62,6 +80,7 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setUserId(user.id);
     
     const { data: userData } = await supabase.from('users').select('*').eq('id', user.id).single();
     if (userData) {

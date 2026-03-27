@@ -3,14 +3,22 @@ import { supabase } from '../lib/supabaseClient';
 import { Calendar, Filter, Clock, CheckCircle2, XCircle, MoreVertical, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 const MyWishes = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [userId, setUserId] = useState(null);
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [wishToDelete, setWishToDelete] = useState(null); // ID of the wish selected for deletion
+
+  // REALTIME SYNC: Refresh data when anything changes on different devices
+  useRealtimeSync({
+    userId,
+    onWishesChange: () => fetchWishes()
+  });
 
   useEffect(() => {
     // Read filter directly from navigation URL parameters
@@ -27,6 +35,7 @@ const MyWishes = () => {
 
   const fetchWishes = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (user) setUserId(user.id);
     const { data, error } = await supabase
       .from('wishes')
       .select('*')

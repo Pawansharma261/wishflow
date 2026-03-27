@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Users, Search, Trash2, Edit2, Phone, Camera, Smartphone, ScanFace, Contact, UserPlus, CheckCircle2 } from 'lucide-react';
 import { Contacts as NativeContacts } from '@capacitor-community/contacts';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 export default function Contacts() {
+  const [userId, setUserId] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [phoneContacts, setPhoneContacts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,6 +18,12 @@ export default function Contacts() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ id: null, name: '', phone_number: '', occasion: 'birthday', occasion_date: '' });
 
+  // REALTIME SYNC: Refresh data when anything changes on different devices
+  useRealtimeSync({
+    userId,
+    onContactsChange: () => fetchContacts()
+  });
+
   useEffect(() => {
     fetchContacts();
   }, []);
@@ -23,6 +31,7 @@ export default function Contacts() {
   const fetchContacts = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setUserId(user.id);
     const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
     if (data) setContacts(data);
     setLoading(false);

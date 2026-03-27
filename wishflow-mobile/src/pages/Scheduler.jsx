@@ -6,6 +6,7 @@ import Confetti from 'react-confetti';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Contacts as CapacitorContacts } from '@capacitor-community/contacts';
 import { io } from 'socket.io-client';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 const occasions = [
   { id: 'birthday', name: 'Birthday', emoji: '🎂' },
@@ -21,6 +22,7 @@ const occasions = [
 const Scheduler = () => {
   const navigate = useNavigate();
   const socketRef = useRef(null);
+  const [userId, setUserId] = useState(null);
   const [step, setStep] = useState(1);
   const [contacts, setContacts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,6 +39,13 @@ const Scheduler = () => {
     channels: ['whatsapp'],
     is_recurring: false,
     recurrence_rule: 'YEARLY'
+  });
+
+  // REALTIME SYNC: Refresh data when anything changes on different devices
+  useRealtimeSync({
+    userId,
+    onUserChange: () => fetchData(),
+    onContactsChange: () => fetchData(),
   });
 
   useEffect(() => {
@@ -82,6 +91,7 @@ const Scheduler = () => {
   const fetchData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setUserId(user.id);
 
     // Setup realtime status sync
     setupSocket(user.id);

@@ -34,9 +34,15 @@ export default function Settings() {
     setLoading(false);
   };
 
+  const getBearerToken = async () => {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('Missing auth session. Please login again.');
+    return `Bearer ${token}`;
+  };
+
   const setupSocket = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
     // Explicitly enforce websockets to prevent Render 400 pooling errors
@@ -48,29 +54,44 @@ export default function Settings() {
 
     socket.on('connect', () => {
       // AUTH HARDENING: Pass token to verify identity
-      socket.emit('register', { userId: user.id, token: session.access_token });
+      supabase.auth.getSession().then(({ data }) => {
+        const token = data?.session?.access_token;
+        if (token) socket.emit('register', { userId: user.id, token: `Bearer ${token}` });
+      });
     });
 
     socket.on('whatsapp_status', (data) => {
-      // Don't let background status updates (like 'connecting') overwrite our ready-to-pair screen
-      if (waStatus === 'pairing_code_ready' && (data.status === 'connecting' || data.status === 'initializing')) {
-        return;
-      }
-
-      setWaStatus(data.status);
-      setWaLoading(data.status === 'initializing' || data.status === 'connecting');
+      console.log('[WS:Settings] Status:', data.status);
       
+      // STABILITY FIX: Keep 'connected' status stable during transient blips
       if (data.status === 'connected') {
-        const fetchP = async () => {
-          await supabase.from('users').update({ whatsapp_connected: true }).eq('id', user.id);
-        };
-        fetchP();
+        setWaStatus('connected');
+        setWaLoading(false);
         setPairingCode('');
         setPairingStatus('');
+        supabase.from('users').update({ whatsapp_connected: true }).eq('id', user.id).then(()=>{});
+      } else if (data.status === 'disconnected') {
+        const logoutReasons = [401, '401', 'loggedOut'];
+        // Only flip to offline if it's an actual logout, not a reconnecting state
+        if (logoutReasons.includes(data.reason)) {
+           setWaStatus('offline');
+           setWaLoading(false);
+           setProfile(prev => ({ ...prev, whatsapp_connected: false }));
+        }
+      } else if (data.status === 'initializing' || data.status === 'connecting') {
+          // Don't let background status updates (like 'connecting') overwrite our ready-to-pair screen
+          if (waStatus !== 'pairing_code_ready' && waStatus !== 'pairing') {
+            setWaLoading(true);
+            setWaStatus(data.status);
+          }
       } else if (data.status === 'error') {
         setErrorStatus(data.message || 'Connection lost. Try again.');
         setWaLoading(false);
       }
+    });
+
+    socket.on('auth_error', (err) => {
+       console.error('[WS] Auth Error:', err.message);
     });
 
     socket.on('whatsapp_pairing_code', (data) => {
@@ -94,15 +115,17 @@ export default function Settings() {
     setPairingCode('');
     setErrorStatus(null);
     try {
-      const { data: { user } = {} } = await supabase.auth.getUser();
+      const authToken = await getBearerToken();
       const API_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
       
       setPairingStatus('Requesting code from WhatsApp...');
       const options = {
         url: `${API_URL}/api/integrations/whatsapp/pair-phone`,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': authToken 
+        },
         data: {
-          userId: user.id,
           phoneNumber: cleaned   // digits only, no + prefix
         },
         connectTimeout: 30000,
@@ -110,9 +133,7 @@ export default function Settings() {
       };
 
       const response = await CapacitorHttp.post(options);
-      console.log("Pairing raw response status:", response.status);
-      console.log("Pairing raw response data:", JSON.stringify(response.data));
-
+      
       if (response.status >= 400) {
         const errMsg = (typeof response.data === 'string'
           ? JSON.parse(response.data)?.error
@@ -120,7 +141,6 @@ export default function Settings() {
         throw new Error(errMsg);
       }
 
-      // CapacitorHttp may return data as string or object
       const parsed = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
       const code = parsed?.pairingCode;
       
@@ -130,7 +150,10 @@ export default function Settings() {
         setPairingStatus('Enter this code in WhatsApp');
         setWaLoading(false);
       } else {
-        throw new Error('No pairing code in response: ' + JSON.stringify(parsed));
+        // HOTFIX: Don't fail if pairingCode is missing in HTTP response, 
+        // as it might already be en route via WebSocket.
+        console.log("No pairing code in HTTP response, waiting for WebSocket...");
+        setPairingStatus('Waiting for code on secure channel...');
       }
     } catch (err) {
       console.error("Pairing error:", err);
@@ -144,12 +167,15 @@ export default function Settings() {
     if (!confirm("Are you sure you want to disconnect WhatsApp?")) return;
     setWaLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const authToken = await getBearerToken();
       const API_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
       await CapacitorHttp.post({
         url: `${API_URL}/api/integrations/whatsapp/disconnect`,
-        headers: { 'Content-Type': 'application/json' },
-        data: { userId: user.id }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': authToken
+        },
+        data: {}
       });
       setWaStatus('offline');
       setPairingCode('');
@@ -165,12 +191,15 @@ export default function Settings() {
     setWaLoading(true);
     setPairingStatus('Cleaning server session...');
     try {
-      const { data: { user } = {} } = await supabase.auth.getUser();
+      const authToken = await getBearerToken();
       const API_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backend-uyd2.onrender.com';
       await CapacitorHttp.post({
         url: `${API_URL}/api/integrations/whatsapp/force-reset`,
-        headers: { 'Content-Type': 'application/json' },
-        data: { userId: user.id }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': authToken
+        },
+        data: {}
       });
       setWaStatus('offline');
       setPairingCode('');
