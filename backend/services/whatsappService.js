@@ -110,18 +110,32 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
       } else if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-        
-        if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: statusCode });
-        
+        const credsRegistered = !!state?.creds?.registered;
+
+        if (!resolved) {
+            // FIX: If socket closes but we are registered, it's NOT a fail — just resume
+            if (!isLoggedOut && credsRegistered) {
+                console.log(`[WA:iron] Resuming registered session for ${userId}`);
+                resolved = true;
+                phonePairing.delete(userId);
+                if (io) io.to(userId).emit('whatsapp_status', { status: 'connecting' });
+                setTimeout(() => connectWhatsApp(userId, io), 2000);
+                resolve({ success: true, resumed: true });
+                return;
+            }
+
+            resolved = true;
+            if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: statusCode });
+            reject(new Error(`Link failed [${statusCode}]`));
+        } else {
+            if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: statusCode });
+            if (!isLoggedOut) {
+              setTimeout(() => connectWhatsApp(userId, io), 5000);
+            }
+        }
+
         phonePairing.delete(userId);
         sessions.delete(userId);
-        
-        if (!resolved) {
-            resolved = true;
-            reject(new Error(`Link failed [${statusCode}]`));
-        } else if (!isLoggedOut) {
-          setTimeout(() => connectWhatsApp(userId, io), 5000);
-        }
       }
     });
 
