@@ -47,6 +47,11 @@ io.on('connection', (socket) => {
 
       // Auto-resume WhatsApp connection if previously connected according to DB
       const status = getWhatsAppStatus(userId);
+      console.log(`[Socket] Status for ${userId}: ${status}`);
+      
+      // FIX: Proactively emit current status so dashboard enables immediately if possible
+      socket.emit('whatsapp_status', { status });
+
       if (status === 'disconnected') {
         const { data } = await supabaseAdmin.from('users').select('whatsapp_connected').eq('id', userId).single();
         if (data?.whatsapp_connected) {
@@ -54,8 +59,6 @@ io.on('connection', (socket) => {
           connectWhatsApp(userId, io).catch(e => console.error('Auto-resume failed:', e.message));
           socket.emit('whatsapp_status', { status: 'connecting' });
         }
-      } else {
-        socket.emit('whatsapp_status', { status: status });
       }
     } catch (err) {
       console.error(`[Socket] Auth error for ${socket.id}:`, err.message);

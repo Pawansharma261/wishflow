@@ -28,7 +28,7 @@ const Dashboard = () => {
   const [radarEvent, setRadarEvent] = useState(null);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [allContacts, setAllContacts] = useState([]);
-  const [statusDraft, setStatusDraft] = useState({ text: '', mediaUrl: '', recipients: [] });
+  const [statusDraft, setStatusDraft] = useState({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
   const [postingStatus, setPostingStatus] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
@@ -93,16 +93,43 @@ const Dashboard = () => {
 
     setPostingStatus(true);
     try {
-      const res = await apiClient.post('/api/integrations/whatsapp/post-status', {
-        text: statusDraft.text,
-        mediaUrl: statusDraft.mediaUrl,
-        recipients: recipientPhones
-      });
-      if (res.success) {
-        alert(`Successfully sent to ${recipientPhones.length} contact(s)! 🚀`);
-        setStatusDraft({ text: '', mediaUrl: '', recipients: [] });
+      if (statusDraft.scheduledAt) {
+        // SCHEDULING FLOW: Create pending wishes for each recipient
+        const utcScheduledDate = new Date(statusDraft.scheduledAt).toISOString();
+        const items = recipientPhones.map(phone => {
+          const contact = allContacts.find(c => c.phone === phone);
+          return {
+            user_id: userId,
+            contact_id: contact?.id,
+            contact_name: contact?.name || 'Contact',
+            contact_phone: phone,
+            message: statusDraft.text,
+            media_url: statusDraft.mediaUrl,
+            scheduled_for: utcScheduledDate,
+            status: 'pending',
+            occasion_type: 'custom_status',
+            channels: ['whatsapp']
+          };
+        });
+
+        const { error } = await supabase.from('wishes').insert(items);
+        if (error) throw error;
+        
+        alert(`Successfully scheduled status for ${recipientPhones.length} contact(s)! 📅`);
+        setStatusDraft({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
       } else {
-        throw new Error(res.error || 'Failed to post status');
+        // IMMEDIATE FLOW
+        const res = await apiClient.post('/api/integrations/whatsapp/post-status', {
+          text: statusDraft.text,
+          mediaUrl: statusDraft.mediaUrl,
+          recipients: recipientPhones
+        });
+        if (res.success) {
+          alert(`Successfully sent to ${recipientPhones.length} contact(s)! 🚀`);
+          setStatusDraft({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
+        } else {
+          throw new Error(res.error || 'Failed to post status');
+        }
       }
     } catch (err) {
       alert(err.message);
@@ -311,9 +338,7 @@ const Dashboard = () => {
                 </button>
              </div>
           </Link>
-       </div>
-
-      {/* Status Hub (WhatsApp Stories) */}
+        {/* Status Hub (WhatsApp Stories) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         <div className="lg:col-span-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] -z-10 group-hover:bg-indigo-500/10 transition-colors" />
@@ -375,7 +400,7 @@ const Dashboard = () => {
                       className="w-full h-32 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center text-white/40 hover:bg-white/10 hover:border-indigo-500/30 transition-all group"
                    >
                       {uploading ? (
-                        <RefreshCw size={24} className="animate-spin text-indigo-400" />
+                         <RefreshCw size={24} className="animate-spin text-indigo-400" />
                       ) : (
                         <>
                           <Paperclip size={24} className="mb-2 group-hover:text-indigo-400 transition-colors" />
@@ -410,6 +435,30 @@ const Dashboard = () => {
                     <Search className="absolute right-0 top-1/2 -translate-y-1/2 text-white/20" size={14} />
                  </div>
                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center space-x-2 text-indigo-400">
+                    <Calendar size={14} />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Schedule for Later?</span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <input 
+                      type="datetime-local"
+                      className="bg-transparent border-none text-white text-[10px] font-black uppercase tracking-widest focus:ring-0 cursor-pointer"
+                      style={{ colorScheme: 'dark' }}
+                      value={statusDraft.scheduledAt}
+                      onChange={(e) => setStatusDraft(prev => ({ ...prev, scheduledAt: e.target.value }))}
+                    />
+                    {statusDraft.scheduledAt && (
+                      <button 
+                        onClick={() => setStatusDraft(prev => ({ ...prev, scheduledAt: '' }))}
+                        className="text-brand-rose text-[8px] font-black uppercase underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
 
                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
                   <button 
@@ -460,12 +509,12 @@ const Dashboard = () => {
 
                <button 
                   onClick={handlePostStatus}
-                  disabled={postingStatus || (!statusDraft.text && !statusDraft.mediaUrl) || !profile.whatsapp_connected}
+                  disabled={postingStatus || (!statusDraft.text && !statusDraft.mediaUrl) || (!profile.whatsapp_connected && !statusDraft.scheduledAt)}
                   className="bg-white text-[#0f0c29] font-black px-12 py-5 rounded-3xl shadow-2xl active:scale-95 transition-all flex items-center space-x-3 disabled:opacity-20 w-full md:w-auto justify-center group"
                >
                   {postingStatus ? <RefreshCw className="animate-spin" size={20} /> : <Send size={20} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />}
                   <span className="uppercase tracking-widest text-xs font-black">
-                     {statusDraft.recipients.length > 0 ? 'Send to Selected' : 'Broadcast to All'}
+                     {statusDraft.scheduledAt ? 'Schedule to Selected' : (statusDraft.recipients.length > 0 ? 'Send to Selected' : 'Broadcast to All')}
                   </span>
                </button>
             </div>
@@ -486,6 +535,7 @@ const Dashboard = () => {
               Open Scheduler
            </Link>
         </div>
+       </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
