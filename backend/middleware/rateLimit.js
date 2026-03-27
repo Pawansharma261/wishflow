@@ -32,4 +32,5 @@ const rateLimiter = (options = { maxRequests: 5, windowMs: 60000 }) => {
 module.exports = {
   pairPhoneLimiter: rateLimiter({ maxRequests: 5, windowMs: 60000 }),     // 5 req / 1 min
   forceResetLimiter: rateLimiter({ maxRequests: 3, windowMs: 300000 }),   // 3 req / 5 min
+  sendLimiter: rateLimiter({ maxRequests: 20, windowMs: 60000 }),         // 20 req / 1 min
 };
