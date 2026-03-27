@@ -48,15 +48,16 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   await clearWhatsAppState(userId);
   const { state, saveCreds } = await useRedisAuthState(userId);
 
-  // 2. Ironclad Socket Config (Reverting to high-success baseline)
+  // 2. Ironclad Socket Config (Dynamic version + standard Linux profile prevents 405)
+  const { version } = await fetchLatestBaileysVersion();
   const sock = makeWASocket({
-    version: [2, 3000, 1015901307],
+    version,
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     logger,
-    browser: Browsers.macOS('Desktop'), // High Trust Desktop Identity
+    browser: Browsers.ubuntu('Chrome'), 
     syncFullHistory: false,
     shouldSyncHistoryMessage: () => false,
     markOnlineOnConnect: true,
@@ -69,27 +70,33 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
   return new Promise((resolve, reject) => {
     let resolved = false;
 
-    // Trigger Pairing Code exactly 3 seconds after construction
-    // This allows background handshaking to stabilize without generating a QR identity yet.
-    setTimeout(async () => {
-        if (resolved) return;
-        try {
-            console.log(`[WA:iron] 📲 Requesting pairing code for ${cleanPhone}`);
-            const code = await sock.requestPairingCode(cleanPhone);
-            const raw = String(code).replace(/-/g, '');
-            const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
-            
-            if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
-            console.log(`[WA:iron] ✅ PAIRING CODE: ${formatted}`);
-        } catch (err) {
-            console.error(`[WA:iron] ❌ Link Request Failed:`, err.message);
-            if (!resolved) { resolved = true; reject(err); phonePairing.delete(userId); }
-        }
-    }, 3000);
-
     sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect } = update;
+      const { connection, lastDisconnect, qr } = update;
       console.log(`[WA:iron] ${userId} | ${connection || 'handshaking'}`);
+
+      // SUCCESS: Request when socket is actually ready (bypasses 405 method not allowed)
+      if (qr && !resolved) {
+          try {
+              console.log(`[WA:iron] 📲 Requesting pairing code for ${cleanPhone}`);
+              // Micro-delay to avoid rate-limiting on Baileys handshake
+              setTimeout(async () => {
+                  try {
+                      const code = await sock.requestPairingCode(cleanPhone);
+                      const raw = String(code).replace(/-/g, '');
+                      const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+                      
+                      if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
+                      console.log(`[WA:iron] ✅ PAIRING CODE: ${formatted}`);
+                  } catch (e) {
+                      console.error(`[WA:iron] ❌ Link Req Fail:`, e.message);
+                      if (!resolved) { resolved = true; reject(e); phonePairing.delete(userId); }
+                  }
+              }, 1000);
+          } catch (err) {
+              console.error(`[WA:iron] ❌ Link Request Failed:`, err.message);
+              if (!resolved) { resolved = true; reject(err); phonePairing.delete(userId); }
+          }
+      }
 
       if (connection === 'open') {
         console.log(`[WA:iron] 🎉 LINK SUCCESS`);
@@ -129,14 +136,15 @@ const connectWhatsApp = async (userId, io) => {
   try {
     const p = (async () => {
       const { state, saveCreds } = await useRedisAuthState(userId);
+      const { version } = await fetchLatestBaileysVersion();
       const sock = makeWASocket({
-        version: [2, 3000, 1015901307],
+        version,
         auth: {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         logger,
-        browser: Browsers.macOS('Desktop'),
+        browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
       });
