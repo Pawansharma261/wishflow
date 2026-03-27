@@ -2,9 +2,16 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const supabaseAdmin = require('../db/supabaseAdmin');
-const { connectWhatsApp, connectWhatsAppWithPhone, disconnectWhatsApp, getLogs } = require('../services/whatsappService');
+const { 
+  connectWhatsApp, 
+  connectWhatsAppWithPhone, 
+  disconnectWhatsApp, 
+  sendWhatsAppMediaMessage,
+  postWhatsAppStatus,
+  getLogs 
+} = require('../services/whatsappService');
 const requireAuth = require('../middleware/requireAuth');
-const { pairPhoneLimiter, forceResetLimiter } = require('../middleware/rateLimit');
+const { pairPhoneLimiter, forceResetLimiter, sendLimiter } = require('../middleware/rateLimit');
 
 // POST /api/integrations/whatsapp/connect
 // Initiates the Baileys connection which will emit QR code to the user's socket room
@@ -48,6 +55,54 @@ router.post('/whatsapp/pair-phone', requireAuth, pairPhoneLimiter, async (req, r
       if (io) io.to(userId).emit('whatsapp_error', { message: error.message });
     }
   });
+});
+
+/**
+ * POST /api/integrations/whatsapp/send-media
+ * Sends an image message with an optional caption.
+ * AUTH: REQUIRED + RATE LIMIT (20/min)
+ */
+router.post('/whatsapp/send-media', requireAuth, sendLimiter, async (req, res) => {
+  const userId = req.user.id;
+  const { phoneNumber, mediaUrl, caption } = req.body;
+
+  if (!phoneNumber || !mediaUrl) {
+    return res.status(400).json({ error: 'phoneNumber and mediaUrl are required' });
+  }
+
+  try {
+    const result = await sendWhatsAppMediaMessage(userId, phoneNumber, mediaUrl, caption || '');
+    res.json(result);
+  } catch (err) {
+    console.error('[Integrations] send-media error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/integrations/whatsapp/post-status
+ * Posts a text or image status/story to selected recipients.
+ * AUTH: REQUIRED + RATE LIMIT (10/min)
+ */
+router.post('/whatsapp/post-status', requireAuth, sendLimiter, async (req, res) => {
+  const userId = req.user.id;
+  const { text, mediaUrl, recipients } = req.body;
+
+  if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ error: 'A non-empty recipients array is required' });
+  }
+
+  if (!text && !mediaUrl) {
+    return res.status(400).json({ error: 'Either text or mediaUrl must be provided for status' });
+  }
+
+  try {
+    const result = await postWhatsAppStatus(userId, { text, mediaUrl, recipients });
+    res.json(result);
+  } catch (err) {
+    console.error('[Integrations] post-status error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/integrations/whatsapp/disconnect

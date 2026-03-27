@@ -24,6 +24,14 @@ const Settings = () => {
   const [codeTimer, setCodeTimer]     = useState(0);  // countdown seconds
   const codeTimerRef = useRef(null);
   const waStatusRef = useRef(waStatus);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await fetchProfile();
+    // Brief delay for UX
+    setTimeout(() => setRefreshing(false), 800);
+  };
 
   useEffect(() => { waStatusRef.current = waStatus; }, [waStatus]);
 
@@ -285,7 +293,16 @@ const Settings = () => {
                     <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
                       <Phone className="text-green-500" size={20} />
                     </div>
-                    <h3 className="font-bold text-white text-lg">WhatsApp</h3>
+                    <div className="flex flex-col">
+                      <h3 className="font-bold text-white text-lg leading-tight">WhatsApp</h3>
+                      <button 
+                        onClick={handleManualRefresh}
+                        className="text-[10px] font-black text-white/30 hover:text-white/60 uppercase tracking-widest text-left flex items-center space-x-1 mt-1 transition-colors"
+                      >
+                        <RefreshCw size={8} className={refreshing ? 'animate-spin' : ''} />
+                        <span>Refresh Status</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Status badge */}
@@ -460,7 +477,16 @@ const Settings = () => {
                     <div className="w-10 h-10 bg-gradient-to-tr from-pink-500 to-purple-500 rounded-xl flex items-center justify-center opacity-80">
                       <Instagram className="text-white" size={20} />
                     </div>
-                    <h3 className="font-bold text-white text-lg">Instagram</h3>
+                    <div className="flex flex-col">
+                      <h3 className="font-bold text-white text-lg leading-tight">Instagram</h3>
+                      <button 
+                        onClick={handleManualRefresh}
+                        className="text-[10px] font-black text-white/30 hover:text-white/60 uppercase tracking-widest text-left flex items-center space-x-1 mt-1 transition-colors"
+                      >
+                        <RefreshCw size={8} className={refreshing ? 'animate-spin' : ''} />
+                        <span>Refresh Status</span>
+                      </button>
+                    </div>
                   </div>
                   {profile.instagram_access_token ? (
                     <span className="flex items-center space-x-1.5 bg-pink-500/20 text-pink-400 px-3 py-1 rounded-full text-xs font-bold">

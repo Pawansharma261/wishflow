@@ -35,9 +35,12 @@ const checkAndSendWishes = async () => {
       const phoneToUse = contact.phone || wish.contact_phone;
       if (channels.includes('whatsapp') && phoneToUse) {
         try {
-          const success = await sendWhatsAppWish(user_id, phoneToUse, message);
-          results.push({ channel: 'whatsapp', status: success ? 'sent' : 'failed', payload: { success } });
-          console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ${success ? '✅ sent' : '❌ failed'}`);
+          // Pass media_url if exists for automatic image wishes
+          const waRes = await sendWhatsAppWish(user_id, phoneToUse, message, wish.media_url || null);
+          const success = waRes.success;
+          
+          results.push({ channel: 'whatsapp', status: success ? 'sent' : 'failed', payload: waRes });
+          console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ${success ? '✅ sent (' + waRes.type + ')' : '❌ failed'}`);
         } catch (error) {
           results.push({ channel: 'whatsapp', status: 'failed', payload: { error: error.message } });
           console.log(`[WishFlow] WhatsApp to ${phoneToUse}: ❌ failed (${error.message})`);

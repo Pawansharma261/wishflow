@@ -4,6 +4,7 @@ import { Sparkles, Users, Send, Clock, TrendingUp, ChevronRight, Gift } from 'lu
 import { Link } from 'react-router-dom';
 import { format, differenceInDays, addYears, isBefore } from 'date-fns';
 import { io } from 'socket.io-client';
+import { RefreshCw } from 'lucide-react';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 const getNextOccurrence = (dateStr) => {
@@ -23,6 +24,18 @@ const Dashboard = () => {
   const [radarEvent, setRadarEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState({ whatsapp_connected: false, has_instagram: false });
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
+
+  const handleManualRefresh = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setRefreshingStatus(true);
+    await fetchDashboardData();
+    // Simulate a brief delay for user feedback
+    setTimeout(() => setRefreshingStatus(false), 800);
+  };
 
   // REALTIME SYNC: Refresh data when anything changes on different devices
   useRealtimeSync({
@@ -162,33 +175,51 @@ const Dashboard = () => {
       </div>
 
       {/* Integration Status Quick Tiles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-         <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center space-x-3 transition-all hover:scale-[1.03] active:scale-95 shadow-lg ${
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+         <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center justify-between transition-all hover:scale-[1.03] active:scale-95 shadow-lg relative group ${
            profile.whatsapp_connected 
            ? 'bg-green-600/90 border-green-400/50 shadow-green-900/40' 
            : 'bg-white/5 border-white/10'
          }`}>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
-               <Send size={18} />
+            <div className="flex items-center space-x-3">
+               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.whatsapp_connected ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
+                  <Send size={18} />
+               </div>
+               <div>
+                  <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.whatsapp_connected ? 'text-white/80' : 'text-white/40'}`}>WhatsApp</p>
+                  <p className={`text-xs font-black ${profile.whatsapp_connected ? 'text-white' : 'text-white/60'}`}>{profile.whatsapp_connected ? 'CONNECTED' : 'OFFLINE'}</p>
+               </div>
             </div>
-            <div>
-               <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.whatsapp_connected ? 'text-white/80' : 'text-white/40'}`}>WhatsApp</p>
-               <p className={`text-xs font-black ${profile.whatsapp_connected ? 'text-white' : 'text-white/60'}`}>{profile.whatsapp_connected ? 'CONNECTED' : 'OFFLINE'}</p>
-            </div>
+            <button 
+              onClick={handleManualRefresh}
+              className={`p-2 rounded-lg transition-all ${profile.whatsapp_connected ? 'hover:bg-white/20 text-white' : 'hover:bg-white/10 text-white/40'}`}
+              title="Refresh Status"
+            >
+              <RefreshCw size={14} className={refreshingStatus ? 'animate-spin' : ''} />
+            </button>
          </Link>
          
-         <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center space-x-3 transition-all hover:scale-[1.03] active:scale-95 shadow-lg ${
+         <Link to="/settings" className={`backdrop-blur-md border rounded-2xl p-4 flex items-center justify-between transition-all hover:scale-[1.03] active:scale-95 shadow-lg relative group ${
            profile.has_instagram 
            ? 'bg-gradient-to-tr from-pink-600 to-purple-600 border-pink-400/50 shadow-pink-900/40' 
            : 'bg-white/5 border-white/10'
          }`}>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.has_instagram ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
-               <TrendingUp size={18} />
+            <div className="flex items-center space-x-3">
+               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${profile.has_instagram ? 'bg-white/20 text-white' : 'bg-white/10 text-white/40'}`}>
+                  <TrendingUp size={18} />
+               </div>
+               <div>
+                  <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.has_instagram ? 'text-white/80' : 'text-white/40'}`}>Instagram</p>
+                  <p className={`text-xs font-black ${profile.has_instagram ? 'text-white' : 'text-white/60'}`}>{profile.has_instagram ? 'CONNECTED' : 'OFFLINE'}</p>
+               </div>
             </div>
-            <div>
-               <p className={`text-[10px] font-black uppercase tracking-tighter ${profile.has_instagram ? 'text-white/80' : 'text-white/40'}`}>Instagram</p>
-               <p className={`text-xs font-black ${profile.has_instagram ? 'text-white' : 'text-white/60'}`}>{profile.has_instagram ? 'CONNECTED' : 'OFFLINE'}</p>
-            </div>
+            <button 
+              onClick={handleManualRefresh}
+              className={`p-2 rounded-lg transition-all ${profile.has_instagram ? 'hover:bg-white/20 text-white' : 'hover:bg-white/10 text-white/40'}`}
+              title="Refresh Status"
+            >
+              <RefreshCw size={14} className={refreshingStatus ? 'animate-spin' : ''} />
+            </button>
          </Link>
       </div>
 

@@ -75,17 +75,14 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
       const { connection, lastDisconnect, qr } = update;
       console.log(`[WA:iron] ${userId} | ${connection || 'handshaking'}`);
 
-      // SUCCESS: Request when socket is actually ready (bypasses 405 method not allowed)
       if (qr && !resolved) {
           try {
               console.log(`[WA:iron] 📲 Requesting pairing code for ${cleanPhone}`);
-              // Micro-delay to avoid rate-limiting on Baileys handshake
               setTimeout(async () => {
                   try {
                       const code = await sock.requestPairingCode(cleanPhone);
                       const raw = String(code).replace(/-/g, '');
                       const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
-                      
                       if (io) io.to(userId).emit('whatsapp_pairing_code', { code: formatted });
                       console.log(`[WA:iron] ✅ PAIRING CODE: ${formatted}`);
                   } catch (e) {
@@ -112,30 +109,36 @@ const connectWhatsAppWithPhone = async (userId, phoneNumber, io) => {
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
         const credsRegistered = !!state?.creds?.registered;
 
-        if (!resolved) {
-            // FIX: If socket closes but we are registered, it's NOT a fail — just resume
-            if (!isLoggedOut && credsRegistered) {
-                console.log(`[WA:iron] Resuming registered session for ${userId}`);
-                resolved = true;
-                phonePairing.delete(userId);
-                if (io) io.to(userId).emit('whatsapp_status', { status: 'connecting' });
-                setTimeout(() => connectWhatsApp(userId, io), 2000);
-                resolve({ success: true, resumed: true });
-                return;
-            }
-
-            resolved = true;
-            if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: statusCode });
-            reject(new Error(`Link failed [${statusCode}]`));
-        } else {
-            if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: statusCode });
-            if (!isLoggedOut) {
-              setTimeout(() => connectWhatsApp(userId, io), 5000);
-            }
+        // TERMINAL FAILURE: Explicit logout or missing credentials
+        if (isLoggedOut || !credsRegistered) {
+           console.log(`[WA:iron] 🚨 TERMINAL DISCONNECT for ${userId} (Reason: ${statusCode})`);
+           await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
+           if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: 401 });
+           
+           if (!resolved) {
+             resolved = true;
+             reject(new Error(`Link failed [Logged Out]`));
+           }
+           sessions.delete(userId);
+           phonePairing.delete(userId);
+           return;
         }
 
-        phonePairing.delete(userId);
+        // TRANSIENT BLIP: Keep state stable, but try to reconnect in background
+        console.log(`[WA:iron] ⏳ Transient close for ${userId} [${statusCode}]. Background retry...`);
+        if (io) io.to(userId).emit('whatsapp_status', { status: 'connecting' });
+        
+        if (!resolved) {
+           // If we're here, it means we weren't fully open yet, but we are registered. 
+           // We keep the promise alive/pending while we resume.
+           resolved = true;
+           setTimeout(() => connectWhatsApp(userId, io), 5000);
+           resolve({ success: true, resumed: true });
+        } else {
+           setTimeout(() => connectWhatsApp(userId, io), 5000);
+        }
         sessions.delete(userId);
+        phonePairing.delete(userId);
       }
     });
 
@@ -163,29 +166,123 @@ const connectWhatsApp = async (userId, io) => {
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
       });
+
       sock.ev.on('creds.update', saveCreds);
-      sock.ev.on('connection.update', (update) => {
-        const { connection, qr } = update;
-        if (qr && io) { io.to(userId).emit('whatsapp_status', { status: 'qr_ready' }); io.to(userId).emit('whatsapp_qr', { qr }); }
+
+      sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        if (qr && io) { 
+           io.to(userId).emit('whatsapp_status', { status: 'qr_ready' }); 
+           io.to(userId).emit('whatsapp_qr', { qr }); 
+        }
+
         if (connection === 'open') {
+          console.log(`[WA:Service] ✅ Socket restored for ${userId}`);
           sessions.set(userId, sock);
-          supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
+          await supabaseAdmin.from('users').update({ whatsapp_connected: true }).eq('id', userId);
           if (io) io.to(userId).emit('whatsapp_status', { status: 'connected' });
+        } else if (connection === 'close') {
+          const statusCode = lastDisconnect?.error?.output?.statusCode;
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+          
+          if (isLoggedOut) {
+             console.log(`[WA:Service] 🚨 Session Revoked for ${userId}`);
+             await supabaseAdmin.from('users').update({ whatsapp_connected: false }).eq('id', userId);
+             if (io) io.to(userId).emit('whatsapp_status', { status: 'disconnected', reason: 401 });
+             sessions.delete(userId);
+          } else {
+             console.log(`[WA:Service] 🔄 Blip/Restart for ${userId} [${statusCode}]. Retrying in 5s...`);
+             if (io) io.to(userId).emit('whatsapp_status', { status: 'connecting' });
+             sessions.delete(userId);
+             setTimeout(() => connectWhatsApp(userId, io), 5000);
+          }
         }
       });
       return sock;
     })();
     connecting.set(userId, p);
     return p;
-  } catch(e) {}
+  } catch(e) {
+    console.error(`[WA:Service] Setup Error for ${userId}:`, e.message);
+  }
 };
 
-const sendWhatsAppWish = async (userId, targetPhone, text) => {
+const getActiveSocket = async (userId) => {
   let sock = sessions.get(userId);
-  if (!sock) { try { sock = await connecting.get(userId); } catch(e) {} sock = sock || sessions.get(userId); }
-  if (!sock) throw new Error(`[WA] Session Null`);
+  if (!sock) {
+     try {
+       // Check if there is an in-progress connection attempt
+       const p = connecting.get(userId);
+       if (p) sock = await p;
+     } catch (e) {
+       console.error(`[WA:SocketSync] Failed to await connecting socket for ${userId}:`, e.message);
+     }
+  }
+  // Double check sessions map in case 'open' event fired during await
+  sock = sock || sessions.get(userId);
+  return sock;
+};
+
+const sendWhatsAppWish = async (userId, targetPhone, text, mediaUrl = null) => {
+  const sock = await getActiveSocket(userId);
+  if (!sock) throw new Error(`WhatsApp session not active for user ${userId}`);
+
   const jid = targetPhone.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
-  await sock.sendMessage(jid, { text });
+  
+  if (mediaUrl) {
+    // Media Message with optional caption
+    await sock.sendMessage(jid, { 
+      image: { url: mediaUrl }, 
+      caption: text || ''
+    });
+    return { success: true, type: 'image' };
+  } else {
+    // Traditional Text Message
+    await sock.sendMessage(jid, { text });
+    return { success: true, type: 'text' };
+  }
+};
+
+const sendWhatsAppMediaMessage = async (userId, targetPhone, mediaUrl, caption = '') => {
+  const sock = await getActiveSocket(userId);
+  if (!sock) throw new Error(`WhatsApp session not active for user ${userId}`);
+
+  const jid = targetPhone.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+  await sock.sendMessage(jid, { 
+    image: { url: mediaUrl }, 
+    caption: caption 
+  });
+  return { success: true };
+};
+
+/**
+ * postWhatsAppStatus
+ * Posts a text or image status/story.
+ * status@broadcast requires a list of JIDs (statusJidList) that can see it.
+ */
+const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', recipients = [] }) => {
+  const sock = await getActiveSocket(userId);
+  if (!sock) throw new Error(`WhatsApp session not active for user ${userId}`);
+
+  if (!recipients.length) throw new Error('Recipients list is mandatory for WhatsApp status visibility.');
+
+  const statusJidList = recipients.map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
+
+  if (mediaUrl) {
+    // Image status
+    await sock.sendMessage('status@broadcast', { 
+       image: { url: mediaUrl }, 
+       caption: text 
+    }, { statusJidList });
+    return { success: true, type: 'image_status' };
+  } else {
+    // Text status
+    await sock.sendMessage('status@broadcast', { 
+      text 
+    }, { statusJidList });
+    return { success: true, type: 'text_status' };
+  }
 };
 
 const disconnectWhatsApp = async (userId) => {
@@ -200,6 +297,8 @@ module.exports = {
   connectWhatsApp, 
   connectWhatsAppWithPhone, 
   sendWhatsAppWish, 
+  sendWhatsAppMediaMessage,
+  postWhatsAppStatus,
   disconnectWhatsApp, 
   getWhatsAppStatus, 
   getLogs: () => logBuffer 
