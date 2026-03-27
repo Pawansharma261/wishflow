@@ -86,26 +86,29 @@ const Settings = () => {
     socket.on('whatsapp_pairing_code', (data) => {
       console.log('[WS] Pairing code received:', data.code);
       setPairingCode(data.code);
-      setCodeTimer(180);          // Increased to 180-second countdown for stability
+      setCodeTimer(180);
       setWaStatus('code_ready');
       setWaLoading(false);
       setPairingMsg('Enter this code in WhatsApp NOW — you have 3 minutes!');
+      
+      // FIX: Persist in localStorage to survive status blips or re-renders
+      localStorage.setItem('wa_pairing_code', data.code);
+      localStorage.setItem('wa_pairing_expire', Date.now() + (180 * 1000));
     });
 
     socket.on('whatsapp_error', (data) => {
       console.error('[WS] WhatsApp error:', data.message);
-      setPairingMsg('');
       setWaStatus('disconnected');
       setWaLoading(false);
-      // alert('WhatsApp pairing failed: ' + data.message);
+      setPairingMsg('Error: ' + data.message);
     });
 
     socket.on('whatsapp_status', (data) => {
-      // CRITICAL: Protect the pairing code from being cleared by status blips
-      const cur = waStatusRef.current;
-      if (cur === 'code_ready' && data.status !== 'connected') {
-        console.log('[WS] Status update suppressed to keep code visible:', data.status);
-        return; 
+      // CRITICAL: Protect the visible code. If we have a valid code on screen, DO NOT overwrite status unless connected.
+      const hasValidCode = !!localStorage.getItem('wa_pairing_code');
+      if (hasValidCode && data.status !== 'connected' && data.status !== 'disconnected') {
+        console.log('[WS] Status suppressed to preserve pairing code:', data.status);
+        return;
       }
 
       console.log('[WS] Status:', data.status);
@@ -117,6 +120,8 @@ const Settings = () => {
         setQrCodeDataUrl('');
         setPairingCode('');
         setPairingMsg('');
+        localStorage.removeItem('wa_pairing_code');
+        localStorage.removeItem('wa_pairing_expire');
       } else if (data.status === 'disconnected') {
         setProfile(p => ({ ...p, whatsapp_connected: false }));
         setWaLoading(false);
