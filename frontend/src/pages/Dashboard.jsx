@@ -601,11 +601,14 @@ const Dashboard = () => {
               <div key={wish.id} className="card flex items-center justify-between hover-lift">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-xl">
-                    {wish.occasion_type === 'birthday' ? '🎂' : wish.occasion_type === 'christmas' ? '🎄' : wish.occasion_type === 'diwali' ? '🪔' : '✨'}
+                    {wish.occasion_type === 'birthday' ? '🎂' : 
+                     wish.occasion_type === 'christmas' ? '🎄' : 
+                     wish.occasion_type === 'diwali' ? '🪔' : 
+                     wish.occasion_type === 'story' ? '🚀' : '✨'}
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || '—'}</h4>
-                    <p className="text-slate-500 text-sm capitalize">{wish.occasion_type} • {wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, h:mm a') : '—'}</p>
+                    <p className="text-slate-500 text-sm capitalize">{(wish.occasion_type || 'Custom').replace('_', ' ')} • {wish.scheduled_for || wish.scheduled_datetime ? format(new Date(wish.scheduled_for || wish.scheduled_datetime), 'MMM do, h:mm a') : '—'}</p>
                   </div>
                 </div>
                 <div className="flex -space-x-2">

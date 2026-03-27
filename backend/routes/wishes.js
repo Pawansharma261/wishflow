@@ -36,6 +36,7 @@ router.post('/', async (req, res) => {
 
 router.post('/bulk-schedule', async (req, res) => {
   const { postType, text, mediaUrl, scheduledAt, recipients } = req.body;
+  console.log(`[BulkSchedule] Request for type: ${postType}, Recipients: ${recipients?.length}`);
   
   if (!recipients || !recipients.length) {
     return res.status(400).json({ error: 'Recipients list is required' });
