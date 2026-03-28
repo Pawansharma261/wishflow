@@ -43,7 +43,7 @@ const MyWishes = () => {
       .from('wishes')
       .select('*')
       .eq('user_id', user.id)
-      .order('scheduled_for', { ascending: false });
+      .order('scheduled_datetime', { ascending: false });
     
     if (error) console.error('MyWishes fetch error:', error.message);
     if (data) setWishes(data);
@@ -140,8 +140,8 @@ const MyWishes = () => {
                     {wish.occasion_type}
                   </td>
                   <td className="px-8 py-6">
-                    <p className="text-sm font-medium text-slate-700">{wish.scheduled_for ? format(new Date(wish.scheduled_for), 'MMM do, yyyy') : '—'}</p>
-                    <p className="text-xs text-slate-400 font-bold">{wish.scheduled_for ? format(new Date(wish.scheduled_for), 'h:mm a') : ''}</p>
+                    <p className="text-sm font-medium text-slate-700">{wish.scheduled_datetime || wish.scheduled_for ? format(new Date(wish.scheduled_datetime || wish.scheduled_for), 'MMM do, yyyy') : '—'}</p>
+                    <p className="text-xs text-slate-400 font-bold">{wish.scheduled_datetime || wish.scheduled_for ? format(new Date(wish.scheduled_datetime || wish.scheduled_for), 'h:mm a') : ''}</p>
                   </td>
                   <td className="px-8 py-6">
                     <div className="flex -space-x-1">

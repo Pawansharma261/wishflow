@@ -33,9 +33,9 @@ const Scheduler = () => {
   const [formData, setFormData] = useState({
     contact_id: '',
     occasion_type: 'birthday',
-    message: '',          // DB column is now 'message'
+    wish_message: '',      // DB column is wish_message
     media_url: '',        // NEW: URL for images
-    scheduled_for: '',    // DB column is now 'scheduled_for'
+    scheduled_datetime: '', // DB column is scheduled_datetime
     channels: ['whatsapp'],
     is_recurring: false,
     recurrence_rule: 'YEARLY'
@@ -138,22 +138,22 @@ const Scheduler = () => {
       new_year: `Happy New Year, ${name}! 🎆 May 2026 be your best year yet. Let's make it unforgettable!`,
     };
 
-    setFormData({ ...formData, message: templates[formData.occasion_type] || `Happy ${formData.occasion_type}, ${name}! ✨ Wishing you the very best.` });
+    setFormData({ ...formData, wish_message: templates[formData.occasion_type] || `Happy ${formData.occasion_type}, ${name}! ✨ Wishing you the very best.` });
   };
 
   const handleSubmit = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     
     // Ensure the datetime is specifically converted from local browser time to a UTC ISO string for accurate background cron execution
-    const utcScheduledDate = new Date(formData.scheduled_for).toISOString();
+    const utcScheduledDate = new Date(formData.scheduled_datetime).toISOString();
 
     const contact = contacts.find(c => c.id === formData.contact_id);
 
     const { error } = await supabase.from('wishes').insert({
       ...formData,
       contact_name: contact?.name,
-      contact_phone: contact?.phone,
-      scheduled_for: utcScheduledDate,
+      contact_phone: contact?.phone_number || contact?.phone,
+      scheduled_datetime: utcScheduledDate,
       user_id: user.id
     });
     
@@ -274,8 +274,8 @@ const Scheduler = () => {
             <textarea 
               className="input-field h-40 resize-none p-6 text-lg"
               placeholder="Start writing your heart out..."
-              value={formData.message}
-              onChange={e => setFormData({...formData, message: e.target.value})}
+              value={formData.wish_message}
+              onChange={e => setFormData({...formData, wish_message: e.target.value})}
             />
             
             <div className="pt-2 animate-fade-in">
@@ -335,8 +335,8 @@ const Scheduler = () => {
                 <label className="text-xs font-bold text-slate-400 block mb-2 px-2 uppercase tracking-widest">Delivery Date & Time</label>
                 <input 
                   type="datetime-local" className="input-field h-14"
-                  value={formData.scheduled_for}
-                  onChange={e => setFormData({...formData, scheduled_for: e.target.value})}
+                  value={formData.scheduled_datetime}
+                  onChange={e => setFormData({...formData, scheduled_datetime: e.target.value})}
                 />
               </div>
 

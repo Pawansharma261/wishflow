@@ -223,7 +223,7 @@ const Dashboard = () => {
     
     const upcoming = wishes
       ?.filter(w => w.status === 'pending')
-      .sort((a, b) => new Date(a.scheduled_for) - new Date(b.scheduled_for))
+      .sort((a, b) => new Date(a.scheduled_datetime || a.scheduled_for) - new Date(b.scheduled_datetime || b.scheduled_for))
       .slice(0, 3) || [];
     setUpcomingWishes(upcoming);
 
@@ -634,7 +634,7 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900">{wish.contact_name || wish.contacts?.name || '—'}</h4>
-                    <p className="text-slate-500 text-sm capitalize">{(wish.occasion_type || 'Custom').replace('_', ' ')} • {wish.scheduled_for || wish.scheduled_datetime ? format(new Date(wish.scheduled_for || wish.scheduled_datetime), 'MMM do, h:mm a') : '—'}</p>
+                    <p className="text-slate-500 text-sm capitalize">{(wish.occasion_type || 'Custom').replace('_', ' ')} • {wish.scheduled_datetime || wish.scheduled_for ? format(new Date(wish.scheduled_datetime || wish.scheduled_for), 'MMM do, h:mm a') : '—'}</p>
                   </div>
                 </div>
                 <div className="flex -space-x-2">
