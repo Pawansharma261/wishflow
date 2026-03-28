@@ -297,17 +297,35 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType 
 
     if (!statusJidList.length) throw new Error('No valid recipients for story visibility.');
 
-    const options = { statusJidList };
+    const options = { 
+      statusJidList,
+      backgroundColor: '#312e81', // Premium Indigo background for text status
+      font: 1 // Standard clean font
+    };
+
     console.log(`[WA:Status] 📢 Rendering ${mediaType} story (Attempt ${attempt}). Targets: ${statusJidList.length}`);
 
     if (mediaType === 'video') {
-      return await sock.sendMessage('status@broadcast', { video: { url: mediaUrl }, caption: text }, options);
+      return await sock.sendMessage('status@broadcast', { 
+        video: { url: mediaUrl }, 
+        caption: text,
+      }, options);
     } else if (mediaType === 'audio') {
-      return await sock.sendMessage('status@broadcast', { audio: { url: mediaUrl }, mimetype: 'audio/mp4', ptt: true }, options);
+      return await sock.sendMessage('status@broadcast', { 
+        audio: { url: mediaUrl }, 
+        mimetype: 'audio/mp4', 
+        ptt: true 
+      }, options);
     } else if (mediaType === 'image' || mediaUrl) {
-      return await sock.sendMessage('status@broadcast', { image: { url: mediaUrl }, caption: text }, options);
+      return await sock.sendMessage('status@broadcast', { 
+        image: { url: mediaUrl }, 
+        caption: text 
+      }, options);
     } else {
-      return await sock.sendMessage('status@broadcast', { text }, options);
+      // For Text Status, Baileys sometimes needs the text inside a specific object or directly
+      return await sock.sendMessage('status@broadcast', { 
+        text: text 
+      }, options);
     }
   } catch (err) {
     console.error(`[WA:Status] ❌ Attempt ${attempt} failed: ${err.message}`);
