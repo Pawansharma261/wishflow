@@ -51,7 +51,10 @@ const checkAndSendWishes = async () => {
               mediaType: normalizedType,
               recipients: ['status@broadcast']
             });
-            console.log(`[WishFlow] WhatsApp ${normalizedType} Story Posted ✅`);
+            console.log(`[WishFlow] WhatsApp Story Posted ✅`);
+            console.log(`[WishFlow] Story Result:`, JSON.stringify(waRes, null, 2));
+            console.log(`[WishFlow] Story mediaType used: ${normalizedType}`);
+            console.log(`[WishFlow] Story statusJidList count will be logged by postWhatsAppStatus`);
           } else {
             // Standard Message
             const phoneToUse = contact?.phone || wish.contact_phone;
