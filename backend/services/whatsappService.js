@@ -166,6 +166,9 @@ const connectWhatsApp = async (userId, io) => {
         browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
+        markOnlineOnConnect: true,
+        connectTimeoutMs: 120000,
+        keepAliveIntervalMs: 25000,
       });
 
       sock.ev.on('creds.update', saveCreds);
