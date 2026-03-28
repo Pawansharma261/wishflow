@@ -48,6 +48,7 @@ router.post('/bulk-schedule', async (req, res) => {
       return {
         user_id: req.user.id,
         contact_id: null, 
+        contact_phone: phone, // CRITICAL: Save the target phone number!
         occasion_type: isStatusStory ? 'status_story' : 'custom_broadcast',
         message: text,
         media_url: mediaUrl,
