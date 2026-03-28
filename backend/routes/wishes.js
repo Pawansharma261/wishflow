@@ -43,17 +43,12 @@ router.post('/bulk-schedule', async (req, res) => {
   }
 
   try {
-    // 1. Fetch a fallback contact ID to satisfy the NOT NULL constraint if needed
-    const { data: contact } = await supabaseAdmin.from('contacts').select('id').eq('user_id', req.user.id).limit(1).single();
-    if (!contact && postType === 'status') {
-       return res.status(400).json({ error: 'Please add at least one contact first to initialize the status hub.' });
-    }
-
     const items = recipients.map(phone => {
+      const isStatusStory = phone === 'status@broadcast';
       return {
         user_id: req.user.id,
-        contact_id: contact?.id || null, // Fallback for schema compliance
-        occasion_type: 'custom', // Limited by ENUM occasion_type
+        contact_id: null, 
+        occasion_type: isStatusStory ? 'status_story' : 'custom_broadcast',
         message: text,
         media_url: mediaUrl,
         scheduled_for: scheduledAt,
