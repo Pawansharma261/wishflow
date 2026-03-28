@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Calendar, Filter, Clock, CheckCircle2, XCircle, MoreVertical, Trash2 } from 'lucide-react';
+import { Calendar, Filter, Clock, CheckCircle2, XCircle, MoreVertical, Trash2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
@@ -12,7 +12,9 @@ const MyWishes = () => {
   const [wishes, setWishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [wishToDelete, setWishToDelete] = useState(null); // ID of the wish selected for deletion
+  const [statusDraft, setStatusDraft] = useState({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
+  const [wishToDelete, setWishToDelete] = useState(null); 
+  const [refreshing, setRefreshing] = useState(false);
 
   // REALTIME SYNC: Refresh data when anything changes on different devices
   useRealtimeSync({
@@ -34,6 +36,7 @@ const MyWishes = () => {
   }, []);
 
   const fetchWishes = async () => {
+    setRefreshing(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setUserId(user.id);
     const { data, error } = await supabase
@@ -45,6 +48,7 @@ const MyWishes = () => {
     if (error) console.error('MyWishes fetch error:', error.message);
     if (data) setWishes(data);
     setLoading(false);
+    setTimeout(() => setRefreshing(false), 500); // UI feedback delay
   };
 
   const deleteWish = (id) => {
@@ -87,19 +91,29 @@ const MyWishes = () => {
     <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
         <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight">Timeline</h1>
-        <div className="flex bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/20">
-          {['all', 'pending', 'sent'].map((f) => (
-            <button
-              key={f}
-              onClick={() => {
-                setFilter(f);
-                navigate(`/wishes?filter=${f}`, { replace: true });
-              }}
-              className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${filter === f ? 'bg-white shadow-xl text-slate-900' : 'text-white/60 hover:text-white'}`}
+        <div className="flex items-center space-x-3">
+            <button 
+              onClick={fetchWishes}
+              disabled={refreshing}
+              className={`p-2.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-white transition-all hover:bg-white/20 active:scale-95 shadow-lg ${refreshing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+              title="Refresh Timeline"
             >
-              <span className="capitalize">{f}</span>
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
             </button>
-          ))}
+            <div className="flex bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/20">
+              {['all', 'pending', 'sent'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => {
+                    setFilter(f);
+                    navigate(`/wishes?filter=${f}`, { replace: true });
+                  }}
+                  className={`px-6 py-2 rounded-xl font-bold text-sm transition-all ${filter === f ? 'bg-white shadow-xl text-slate-900' : 'text-white/60 hover:text-white'}`}
+                >
+                  <span className="capitalize">{f}</span>
+                </button>
+              ))}
+            </div>
         </div>
       </div>
 
