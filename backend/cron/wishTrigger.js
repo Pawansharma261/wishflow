@@ -13,8 +13,15 @@ const checkAndSendWishes = async () => {
       .eq('status', 'pending')
       .lte('scheduled_datetime', now);
 
-    if (error) throw error;
-    if (!wishes || wishes.length === 0) return;
+    if (error) {
+      console.error('[WishFlow] DB fetch error:', error.message);
+      throw error;
+    }
+
+    if (!wishes || wishes.length === 0) {
+      console.log('[WishFlow] No due wishes found.');
+      return;
+    }
 
     console.log(`[WishFlow] Processing ${wishes.length} due wish(es)...`);
 
@@ -39,26 +46,25 @@ const checkAndSendWishes = async () => {
 
       const contact_name = contact?.name || 'System';
 
-      console.log(`[WishFlow] Sending [${occasion_type}] to ${contact_name} via [${channels.join(', ')}]`);
+      console.log(`[WishFlow] Sending [${occasion_type}] to ${contact_name} via [${(channels || []).join(', ')}]`);
 
       const results = [];
 
-      if (channels.includes('whatsapp')) {
+      if ((channels || []).includes('whatsapp')) {
         try {
           let waRes;
 
-          if (occasion_type === 'status_story' || occasion_type === 'custom') {
-            // Normalize mediaType from DB value
+          if (occasion_type === 'status_story') {
             const rawType = wish.media_type || '';
             let normalizedType = 'text';
             if (rawType.startsWith('video') || rawType === 'video') normalizedType = 'video';
             else if (rawType.startsWith('audio') || rawType === 'audio') normalizedType = 'audio';
             else if (rawType.startsWith('image') || rawType === 'image' || wish.media_url) normalizedType = 'image';
 
-            console.log(`[WishFlow] Posting story | type: ${normalizedType} | mediaUrl: ${wish.media_url || 'none'}`);
+            console.log(`[WishFlow] Posting story | type: ${normalizedType} | text: ${wish_message} | mediaUrl: ${wish.media_url || 'none'}`);
 
             waRes = await postWhatsAppStatus(user_id, {
-              text: wish_message,
+              text: wish_message || '',
               mediaUrl: wish.media_url || '',
               mediaType: normalizedType,
               recipients: ['status@broadcast'],
@@ -76,23 +82,26 @@ const checkAndSendWishes = async () => {
             }
           }
 
-          if (waRes) results.push({ channel: 'whatsapp', status: 'sent', payload: waRes });
+          if (waRes) {
+            results.push({ channel: 'whatsapp', status: 'sent', payload: waRes });
+          }
         } catch (error) {
           results.push({ channel: 'whatsapp', status: 'failed', payload: { error: error.message } });
           console.log(`[WishFlow] WhatsApp Error [${id}]: ❌ ${error.message}`);
         }
       }
 
-      if (channels.includes('instagram') && contact?.instagram_username) {
+      if ((channels || []).includes('instagram') && contact?.instagram_username) {
         if (user.instagram_access_token) {
           const res = await sendInstagramDM(contact.instagram_username, wish_message, user.instagram_access_token);
           results.push({ channel: 'instagram', status: res.success ? 'sent' : 'failed', payload: res });
+          console.log(`[WishFlow] Instagram to @${contact.instagram_username}: ${res.success ? '✅ sent' : '❌ ' + (res.error?.message || res.error)}`);
         } else {
-          results.push({ channel: 'instagram', status: 'failed', payload: { error: 'No Instagram access token.' } });
+          results.push({ channel: 'instagram', status: 'failed', payload: { error: 'No Instagram access token in Settings.' } });
         }
       }
 
-      if (channels.includes('push')) {
+      if ((channels || []).includes('push')) {
         const { data: devices } = await supabaseAdmin
           .from('user_devices')
           .select('fcm_token')
@@ -104,7 +113,7 @@ const checkAndSendWishes = async () => {
             results.push({ channel: 'push', status: res.success ? 'sent' : 'failed', payload: res });
           }
         } else {
-          results.push({ channel: 'push', status: 'failed', payload: { error: 'No device found.' } });
+          results.push({ channel: 'push', status: 'failed', payload: { error: 'No registered device found.' } });
         }
       }
 
