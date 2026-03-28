@@ -5,10 +5,13 @@ const useRedisAuthState = async (userId) => {
   const KEY_PREFIX = `wa_session:${userId}:`;
 
   const read = async (key) => {
+    // Upstash REST handles string conversion differently, so we ensure standard reviver
     const data = await redisClient.get(`${KEY_PREFIX}${key}`);
     if (!data) return null;
     try {
-      return JSON.parse(data, BufferJSON.reviver);
+      // Upstash sometimes returns already-parsed objects or raw strings
+      const payload = typeof data === 'string' ? data : JSON.stringify(data);
+      return JSON.parse(payload, BufferJSON.reviver);
     } catch {
       return null;
     }
@@ -64,9 +67,14 @@ const useRedisAuthState = async (userId) => {
 };
 
 const clearWhatsAppState = async (userId) => {
-  const keys = await redisClient.keys(`wa_session:${userId}:*`);
-  if (keys.length > 0) {
-    await redisClient.del(...keys);
+  // Upstash SCAN/KEYS handling
+  try {
+    const keys = await redisClient.keys(`wa_session:${userId}:*`);
+    if (keys && keys.length > 0) {
+      await redisClient.del(...keys);
+    }
+  } catch (e) {
+    console.warn('[Redis] Flush failed:', e.message);
   }
 };
 
