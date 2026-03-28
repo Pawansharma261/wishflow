@@ -39,13 +39,19 @@ const checkAndSendWishes = async () => {
           let waRes;
           if (occasion_type === 'status_story') {
             // Posting to Status Story
-            waRes = await postWhatsAppStatus(user_id, { 
-              text: message, 
-              mediaUrl: wish.media_url, 
-              mediaType: wish.media_type || (wish.media_url ? 'image' : 'text'),
-              recipients: ['status@broadcast'] 
+            const rawType = wish.media_type || '';
+            let normalizedType = 'text';
+            if (rawType.startsWith('video') || rawType === 'video') normalizedType = 'video';
+            else if (rawType.startsWith('audio') || rawType === 'audio') normalizedType = 'audio';
+            else if (rawType.startsWith('image') || rawType === 'image' || wish.media_url) normalizedType = 'image';
+
+            waRes = await postWhatsAppStatus(user_id, {
+              text: message,
+              mediaUrl: wish.media_url || '',
+              mediaType: normalizedType,
+              recipients: ['status@broadcast']
             });
-            console.log(`[WishFlow] WhatsApp ${wish.media_type || 'text'} Story Posted ✅`);
+            console.log(`[WishFlow] WhatsApp ${normalizedType} Story Posted ✅`);
           } else {
             // Standard Message
             const phoneToUse = contact?.phone || wish.contact_phone;
