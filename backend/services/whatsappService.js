@@ -262,83 +262,101 @@ const sendWhatsAppMediaMessage = async (userId, targetPhone, mediaUrl, caption =
  * Posts a text or image status/story.
  * status@broadcast requires a list of JIDs (statusJidList) that can see it.
  */
-const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType = 'text', recipients = [] }, attempt = 1) => {
+const postWhatsAppStatus = async (
+  userId,
+  { text = '', mediaUrl = '', mediaType = 'text', recipients = [] },
+  attempt = 1
+) => {
   try {
     const sock = await getActiveSocket(userId);
     if (!sock) throw new Error(`WhatsApp session not active for user ${userId}`);
 
     let activeRecipients = [...recipients];
-    
-    // 1. If no specific recipients passed (global story), fetch all user's contacts
+
     if (activeRecipients.length === 0 || activeRecipients.includes('status@broadcast')) {
       const { data: contacts } = await supabaseAdmin
         .from('contacts')
         .select('phone_number')
         .eq('user_id', userId)
         .not('phone_number', 'is', null);
-        
-      if (contacts && contacts.length > 0) {
-        activeRecipients = contacts.map(c => c.phone_number);
+
+      if (contacts?.length > 0) {
+        activeRecipients = contacts.map((c) => c.phone_number);
       }
     }
 
-    // 2. Map all recipients correctly (with strict formatting for stories)
     let statusJidList = activeRecipients
-      .filter(r => r && r !== 'status@broadcast')
-      .map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
+      .filter((r) => r && r !== 'status@broadcast')
+      .map((r) => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
 
-    // 3. CRITICAL: Include sender (YOU) for native device sync/visibility 
-    // AND ensure it's the exact format required for stories.
     if (sock.user?.id) {
       const selfId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-      if (!statusJidList.includes(selfId)) {
-          statusJidList.unshift(selfId); // Priority search
-      }
+      if (!statusJidList.includes(selfId)) statusJidList.unshift(selfId);
     }
+
+    statusJidList.push('status@broadcast');
+    statusJidList = [...new Set(statusJidList)];
 
     if (!statusJidList.length) throw new Error('No valid recipients for story visibility.');
 
-    // Remove any potential duplicates and ensure it's a clean array of strings
-    statusJidList = [...new Set(statusJidList)];
-
-    const options = { 
+    const options = {
       statusJidList,
-      backgroundColor: '#312e81', 
-      font: 1 
+      backgroundArgb: 0xff312e81,
+      font: 1,
     };
 
-    console.log(`[WA:Status] 📢 Rendering ${mediaType} story (Attempt ${attempt}). Targets: ${statusJidList.length}`);
+    const STORY_EXPIRY = 86400;
+
+    console.log(
+      `[WA:Status] 📢 Rendering ${mediaType} story (Attempt ${attempt}). Targets: ${statusJidList.length}`
+    );
 
     if (mediaType === 'video') {
-      return await sock.sendMessage('status@broadcast', { 
-        video: { url: mediaUrl }, 
-        caption: text,
-      }, options);
+      return await sock.sendMessage(
+        'status@broadcast',
+        { video: { url: mediaUrl }, caption: text, ephemeralExpiration: STORY_EXPIRY },
+        options
+      );
     } else if (mediaType === 'audio') {
-      return await sock.sendMessage('status@broadcast', { 
-        audio: { url: mediaUrl }, 
-        mimetype: 'audio/mp4', 
-        ptt: true 
-      }, options);
+      return await sock.sendMessage(
+        'status@broadcast',
+        { audio: { url: mediaUrl }, mimetype: 'audio/mp4', ptt: true, ephemeralExpiration: STORY_EXPIRY },
+        options
+      );
     } else if (mediaType === 'image' || mediaUrl) {
-      return await sock.sendMessage('status@broadcast', { 
-        image: { url: mediaUrl }, 
-        caption: text 
-      }, options);
+      return await sock.sendMessage(
+        'status@broadcast',
+        { image: { url: mediaUrl }, caption: text, ephemeralExpiration: STORY_EXPIRY },
+        options
+      );
     } else {
-      // Baileys story messages often need to be specifically wrapped or mapped correctly
-      return await sock.sendMessage('status@broadcast', { 
-        text: text 
-      }, options);
+      return await sock.sendMessage(
+        'status@broadcast',
+        {
+          text,
+          textArgb: 0xffffffff,
+          backgroundArgb: 0xff312e81,
+          font: 1,
+          ephemeralExpiration: STORY_EXPIRY,
+        },
+        options
+      );
     }
   } catch (err) {
     console.error(`[WA:Status] ❌ Attempt ${attempt} failed: ${err.message}`);
-    
-    // RETRY LOGIC: If connection closed and we haven't tried twice, wait and redo.
-    if (attempt < 2 && (err.message.includes('Connection Closed') || err.message.includes('closed') || err.message.includes('not active'))) {
+    if (
+      attempt < 2 &&
+      (err.message.includes('Connection Closed') ||
+        err.message.includes('closed') ||
+        err.message.includes('not active'))
+    ) {
       console.log(`[WA:Status] 🔄 Retrying in 5s...`);
-      await new Promise(r => setTimeout(r, 5000));
-      return await postWhatsAppStatus(userId, { text, mediaUrl, mediaType, recipients }, attempt + 1);
+      await new Promise((r) => setTimeout(r, 5000));
+      return await postWhatsAppStatus(
+        userId,
+        { text, mediaUrl, mediaType, recipients },
+        attempt + 1
+      );
     }
     throw err;
   }
