@@ -30,7 +30,12 @@ export default function Dashboard() {
   const [allContacts, setAllContacts] = useState<any[]>([]);
   
   // Status Hub State
-  const [statusDraft, setStatusDraft] = useState({ message: '', media_url: '', recipients: [] as string[] });
+  const [statusDraft, setStatusDraft] = useState({ 
+    message: '', 
+    media_url: '', 
+    media_type: 'text' as 'text' | 'image' | 'video' | 'audio',
+    recipients: [] as string[] 
+  });
   const [isPosting, setIsPosting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showContactPicker, setShowContactPicker] = useState(false);
@@ -145,14 +150,15 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: profile.id,
-          message: statusDraft.message,
-          mediaUrl: statusDraft.media_url,
-          recipients: statusDraft.recipients.length > 0 ? statusDraft.recipients : null // null means broadcast
+          message: statusDraft.message, 
+          mediaUrl: statusDraft.media_url, 
+          mediaType: statusDraft.media_type,
+          recipients: statusDraft.recipients.length > 0 ? statusDraft.recipients : ['status@broadcast'] 
         })
       });
 
       if (resp.ok) {
-        setStatusDraft({ message: '', media_url: '', recipients: [] });
+        setStatusDraft({ message: '', media_url: '', media_type: 'text', recipients: [] });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert('Success!', statusDraft.recipients.length > 0 ? 'Messages sent to selected contacts.' : 'Status broadcasted successfully.');
       } else {
@@ -223,62 +229,82 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* STATUS HUB (Ported from Web) */}
-        <View style={{ backgroundColor: '#ffffff', borderRadius: 28, padding: 20, marginBottom: 28, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(236,72,153,0.1)', justifyContent: 'center', alignItems: 'center' }}>
-               <ImageIcon size={18} color="#ec4899" />
-            </View>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a' }}>Status Hub</Text>
+          {/* MULTI-FORMAT SELECTOR */}
+          <View style={{ flexDirection: 'row', backgroundColor: '#f1f5f9', borderRadius: 16, padding: 4, marginBottom: 16 }}>
+             {['text', 'image', 'video', 'audio'].map((t) => (
+                <TouchableOpacity 
+                   key={t}
+                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setStatusDraft(prev => ({ ...prev, media_type: t as any, media_url: '' })); }}
+                   style={{ flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: statusDraft.media_type === t ? '#fff' : 'transparent', borderRadius: 12, shadowColor: '#000', shadowOpacity: statusDraft.media_type === t ? 0.05 : 0, shadowRadius: 4, elevation: statusDraft.media_type === t ? 2 : 0 }}
+                >
+                   <Text style={{ fontSize: 10, fontWeight: '900', color: statusDraft.media_type === t ? '#0f172a' : '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>{t}</Text>
+                </TouchableOpacity>
+             ))}
           </View>
 
           <TextInput 
             value={statusDraft.message}
             onChangeText={t => setStatusDraft(prev => ({ ...prev, message: t }))}
-            placeholder="What's happening? Share a celebration..."
+            placeholder={statusDraft.media_type === 'text' ? "Type your status..." : "Add a caption..."}
             placeholderTextColor="#94a3b8"
             multiline
-            style={{ backgroundColor: '#f8fafc', borderRadius: 20, padding: 16, color: '#0f172a', fontSize: 15, minHeight: 100, textAlignVertical: 'top', borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 12 }}
+            style={{ backgroundColor: '#f8fafc', borderRadius: 20, padding: 16, color: '#0f172a', fontSize: 15, minHeight: 80, textAlignVertical: 'top', borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 12 }}
           />
 
           {statusDraft.media_url && (
-            <View style={{ position: 'relative', marginBottom: 12, borderRadius: 16, overflow: 'hidden', height: 180 }}>
-               <Image source={{ uri: statusDraft.media_url }} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <View style={{ position: 'relative', marginBottom: 16, borderRadius: 20, overflow: 'hidden', height: 200, backgroundColor: '#000' }}>
+               {statusDraft.media_type === 'image' && <Image source={{ uri: statusDraft.media_url }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />}
+               {statusDraft.media_type === 'video' && <Video source={{ uri: statusDraft.media_url }} style={{ width: '100%', height: '100%' }} useNativeControls resizeMode={ResizeMode.CONTAIN} isLooping />}
+               {statusDraft.media_type === 'audio' && (
+                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1e293b' }}>
+                    <Mic size={40} color="#ec4899" />
+                    <Text style={{ color: '#fff', fontWeight: '800', marginTop: 12 }}>Voice Note attached</Text>
+                 </View>
+               )}
                <TouchableOpacity 
                   onPress={() => setStatusDraft(prev => ({ ...prev, media_url: '' }))}
-                  style={{ position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 12 }}
+                  style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 14 }}
                >
-                  <X size={16} color="#fff" />
+                  <X size={18} color="#fff" />
                </TouchableOpacity>
             </View>
           )}
 
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-             <TouchableOpacity 
-               onPress={handlePickImage}
-               disabled={uploading}
-               style={{ flex: 1, height: 50, backgroundColor: '#f1f5f9', borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 }}
-             >
-                {uploading ? <ActivityIndicator size="small" color="#ec4899" /> : <><ImageIcon size={18} color="#64748b" /><Text style={{ color: '#475569', fontWeight: '800', fontSize: 13 }}>Attach Photo</Text></>}
-             </TouchableOpacity>
+             {statusDraft.media_type !== 'text' && (
+               <TouchableOpacity 
+                 onPress={handlePickImage}
+                 disabled={uploading}
+                 style={{ flex: 1.2, height: 54, backgroundColor: '#f1f5f9', borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8, borderWidth: statusDraft.media_url ? 1 : 0, borderColor: '#ec4899' }}
+               >
+                  {uploading ? <ActivityIndicator size="small" color="#ec4899" /> : (
+                    <>
+                      {statusDraft.media_type === 'image' && <ImageIcon size={20} color="#64748b" />}
+                      {statusDraft.media_type === 'video' && <VideoIcon size={20} color="#64748b" />}
+                      {statusDraft.media_type === 'audio' && <Mic size={20} color="#64748b" />}
+                      <Text style={{ color: '#475569', fontWeight: '800', fontSize: 13 }}>Upload {statusDraft.media_type}</Text>
+                    </>
+                  )}
+               </TouchableOpacity>
+             )}
 
              <TouchableOpacity 
                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowContactPicker(true); }}
-               style={{ flex: 1, height: 50, backgroundColor: statusDraft.recipients.length > 0 ? 'rgba(99,102,241,0.1)' : '#f1f5f9', borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8, borderWidth: statusDraft.recipients.length > 0 ? 1 : 0, borderColor: '#818cf8' }}
+               style={{ flex: 1, height: 54, backgroundColor: statusDraft.recipients.length > 0 ? 'rgba(99,102,241,0.08)' : '#f1f5f9', borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8, borderWidth: statusDraft.recipients.length > 0 ? 1 : 0, borderColor: '#818cf8' }}
              >
-                {statusDraft.recipients.length > 0 ? <UserCheck size={18} color="#6366f1" /> : <Globe size={18} color="#64748b" />}
+                {statusDraft.recipients.length > 0 ? <UserCheck size={20} color="#6366f1" /> : <Globe size={20} color="#64748b" />}
                 <Text style={{ color: statusDraft.recipients.length > 0 ? '#6366f1' : '#475569', fontWeight: '800', fontSize: 13 }}>
-                   {statusDraft.recipients.length > 0 ? `${statusDraft.recipients.length} Selected` : 'Broadcast'}
+                   {statusDraft.recipients.length > 0 ? `${statusDraft.recipients.length} Target` : 'Broadcast'}
                 </Text>
              </TouchableOpacity>
           </View>
 
           <TouchableOpacity 
             onPress={handlePostStatus}
-            disabled={isPosting || (!statusDraft.message && !statusDraft.media_url)}
-            style={{ backgroundColor: '#0f172a', height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, opacity: (isPosting || (!statusDraft.message && !statusDraft.media_url)) ? 0.6 : 1 }}
+            disabled={isPosting || (statusDraft.media_type !== 'text' && !statusDraft.media_url) || (statusDraft.media_type === 'text' && !statusDraft.message)}
+            style={{ backgroundColor: '#0f172a', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, opacity: (isPosting || (statusDraft.media_type !== 'text' && !statusDraft.media_url)) ? 0.6 : 1, shadowColor: '#0f172a', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 }}
           >
-             {isPosting ? <ActivityIndicator size="small" color="#fff" /> : <><Send size={20} color="#fff" /><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>Post to WhatsApp</Text></>}
+             {isPosting ? <ActivityIndicator size="small" color="#fff" /> : <><Send size={20} color="#fff" /><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>Instant WhatsApp Post</Text></>}
           </TouchableOpacity>
         </View>
 
