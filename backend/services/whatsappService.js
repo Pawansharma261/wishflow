@@ -280,17 +280,18 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType 
     }
   }
 
-  if (!activeRecipients.length) throw new Error('No contacts available for status visibility.');
-
   const statusJidList = activeRecipients
     .filter(r => r !== 'status@broadcast')
     .map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
 
-  // CRITICAL: Include sender ID for native device sync
+  // CRITICAL: Include sender ID for native device sync.
+  // Move this BEFORE the throw check to support users with zero contacts.
   if (sock.user?.id) {
     const selfJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
     if (!statusJidList.includes(selfJid)) statusJidList.push(selfJid);
   }
+
+  if (!statusJidList.length) throw new Error('No contacts or sender info available for status visibility.');
 
   const options = { statusJidList };
   console.log(`[WA:Status] 📢 Rendering ${mediaType} story. Targets: ${statusJidList.length}`);
