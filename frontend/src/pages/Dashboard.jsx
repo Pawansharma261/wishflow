@@ -28,7 +28,13 @@ const Dashboard = () => {
   const [radarEvent, setRadarEvent] = useState(null);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const [allContacts, setAllContacts] = useState([]);
-  const [statusDraft, setStatusDraft] = useState({ text: '', mediaUrl: '', recipients: [], scheduledAt: '' });
+  const [statusDraft, setStatusDraft] = useState({ 
+    text: '', 
+    mediaUrl: '', 
+    mediaType: 'text', // 'text', 'image', 'video', 'audio'
+    recipients: [], 
+    scheduledAt: '' 
+  });
   const [postingStatus, setPostingStatus] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
@@ -101,6 +107,7 @@ const Dashboard = () => {
             postType, // 'broadcast' or 'status'
             text: statusDraft.text,
             mediaUrl: statusDraft.mediaUrl,
+            mediaType: statusDraft.mediaType,
             scheduledAt: utcScheduledDate,
             recipients: recipientPhones
         };
@@ -369,49 +376,68 @@ const Dashboard = () => {
                 />
               </div>
 
-              <div className="space-y-4 flex flex-col">
-                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest px-1 block">Local Media (Device)</label>
-                 
-                 <input 
-                    type="file" 
-                    className="absolute opacity-0 pointer-events-none w-0 h-0" 
-                    ref={fileInputRef} 
-                    accept="image/*" 
-                    onChange={handleFileUpload}
-                 />
+               <div className="space-y-4 flex flex-col">
+                  <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] font-black text-white/30 uppercase tracking-widest block">Status Format</label>
+                    <div className="flex bg-white/5 p-1 rounded-lg">
+                      {['text', 'image', 'video', 'audio'].map(t => (
+                        <button 
+                          key={t}
+                          onClick={() => setStatusDraft(prev => ({ ...prev, mediaType: t, mediaUrl: '' }))}
+                          className={`px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-tighter transition-all ${statusDraft.mediaType === t ? 'bg-indigo-500 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <input 
+                     type="file" 
+                     className="absolute opacity-0 pointer-events-none w-0 h-0" 
+                     ref={fileInputRef} 
+                     accept={statusDraft.mediaType === 'image' ? 'image/*' : statusDraft.mediaType === 'video' ? 'video/*' : statusDraft.mediaType === 'audio' ? 'audio/*' : '*'} 
+                     onChange={handleFileUpload}
+                  />
 
-                 {statusDraft.mediaUrl ? (
-                   <div className="relative w-full h-32 rounded-3xl overflow-hidden border border-indigo-500/30">
-                      <img src={statusDraft.mediaUrl} className="w-full h-full object-cover" alt="Preview" />
+                  {statusDraft.mediaType !== 'text' && (
+                    statusDraft.mediaUrl ? (
+                      <div className="relative w-full h-32 rounded-3xl overflow-hidden border border-indigo-500/30 bg-black/20">
+                         {statusDraft.mediaType === 'image' && <img src={statusDraft.mediaUrl} className="w-full h-full object-cover" alt="Preview" />}
+                         {statusDraft.mediaType === 'video' && <video src={statusDraft.mediaUrl} className="w-full h-full object-contain" controls />}
+                         {statusDraft.mediaType === 'audio' && <audio src={statusDraft.mediaUrl} className="w-full mt-10 px-4" controls />}
+                         <button 
+                            onClick={() => setStatusDraft({...statusDraft, mediaUrl: ''})}
+                            className="absolute top-2 right-2 bg-black/60 text-white p-2 rounded-xl hover:bg-black transition-colors z-10"
+                         >
+                            <X size={16} />
+                         </button>
+                      </div>
+                    ) : (
                       <button 
-                         onClick={() => setStatusDraft({...statusDraft, mediaUrl: ''})}
-                         className="absolute top-2 right-2 bg-black/60 text-white p-2 rounded-xl hover:bg-black transition-colors"
+                         onClick={() => fileInputRef.current?.click()}
+                         disabled={uploading}
+                         className="w-full h-32 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center text-white/40 hover:bg-white/10 hover:border-indigo-500/30 transition-all group"
                       >
-                         <X size={16} />
+                         {uploading ? (
+                            <RefreshCw size={24} className="animate-spin text-indigo-400" />
+                         ) : (
+                           <>
+                             <Paperclip size={24} className="mb-2 group-hover:text-indigo-400 transition-colors" />
+                             <span className="text-[10px] font-black uppercase tracking-widest">Attach {statusDraft.mediaType}</span>
+                           </>
+                         )}
                       </button>
-                   </div>
-                 ) : (
-                   <button 
-                      onClick={() => { console.debug('[UI] Select button clicked'); fileInputRef.current?.click(); }}
-                      disabled={uploading}
-                      className="w-full h-32 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center text-white/40 hover:bg-white/10 hover:border-indigo-500/30 transition-all group"
-                   >
-                      {uploading ? (
-                         <RefreshCw size={24} className="animate-spin text-indigo-400" />
-                      ) : (
-                        <>
-                          <Paperclip size={24} className="mb-2 group-hover:text-indigo-400 transition-colors" />
-                          <span className="text-[10px] font-black uppercase tracking-widest">Select Image</span>
-                        </>
-                      )}
-                   </button>
-                 )}
+                    )
+                  )}
 
-                 <div className="mt-auto pt-4 flex bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-4 items-center space-x-3">
-                    <MessageCircle size={18} className="text-indigo-400" />
-                    <p className="text-[10px] text-white/50 font-medium leading-relaxed italic">Upload from your drive and I'll send it as a beautiful image status for you.</p>
-                 </div>
-              </div>
+                  <div className="mt-auto pt-4 flex bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-4 items-center space-x-3">
+                     <MessageCircle size={18} className="text-indigo-400" />
+                     <p className="text-[10px] text-white/50 font-medium leading-relaxed italic">
+                        {statusDraft.mediaType === 'text' ? "Posting pure text status correctly styled for WhatsApp." : `Upload ${statusDraft.mediaType} story and I'll deliver it elegantly.`}
+                     </p>
+                  </div>
+               </div>
             </div>
 
             {postType === 'broadcast' && (

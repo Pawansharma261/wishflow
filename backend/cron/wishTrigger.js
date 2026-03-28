@@ -42,9 +42,10 @@ const checkAndSendWishes = async () => {
             waRes = await postWhatsAppStatus(user_id, { 
               text: message, 
               mediaUrl: wish.media_url, 
-              recipients: ['status@broadcast'] // Default story visibility
+              mediaType: wish.media_type || (wish.media_url ? 'image' : 'text'),
+              recipients: ['status@broadcast'] 
             });
-            console.log(`[WishFlow] WhatsApp Story Posted for ${user_id} ✅`);
+            console.log(`[WishFlow] WhatsApp ${wish.media_type || 'text'} Story Posted ✅`);
           } else {
             // Standard Message
             const phoneToUse = contact?.phone || wish.contact_phone;

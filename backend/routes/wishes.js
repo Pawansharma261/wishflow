@@ -35,8 +35,8 @@ router.post('/', async (req, res) => {
 });
 
 router.post('/bulk-schedule', async (req, res) => {
-  const { postType, text, mediaUrl, scheduledAt, recipients } = req.body;
-  console.log(`[BulkSchedule] Request for type: ${postType}, Recipients: ${recipients?.length}`);
+  const { postType, text, mediaUrl, mediaType, scheduledAt, recipients } = req.body;
+  console.log(`[BulkSchedule] Request for type: ${postType}, Media: ${mediaType}, Recipients: ${recipients?.length}`);
   
   if (!recipients || !recipients.length) {
     return res.status(400).json({ error: 'Recipients list is required' });
@@ -51,6 +51,7 @@ router.post('/bulk-schedule', async (req, res) => {
         occasion_type: isStatusStory ? 'status_story' : 'custom_broadcast',
         message: text,
         media_url: mediaUrl,
+        media_type: mediaType || (mediaUrl ? 'image' : 'text'),
         scheduled_for: scheduledAt,
         status: 'pending',
         channels: ['whatsapp']

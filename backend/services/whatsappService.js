@@ -262,13 +262,12 @@ const sendWhatsAppMediaMessage = async (userId, targetPhone, mediaUrl, caption =
  * Posts a text or image status/story.
  * status@broadcast requires a list of JIDs (statusJidList) that can see it.
  */
-const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', recipients = [] }) => {
+const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType = 'text', recipients = [] }) => {
   const sock = await getActiveSocket(userId);
   if (!sock) throw new Error(`WhatsApp session not active for user ${userId}`);
 
   let activeRecipients = [...recipients];
   
-  // 1. If no specific recipients passed (global story), fetch all user's contacts
   if (activeRecipients.length === 0 || activeRecipients.includes('status@broadcast')) {
     const { data: contacts } = await supabaseAdmin
       .from('contacts')
@@ -281,38 +280,29 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', recipients
     }
   }
 
-  if (!activeRecipients.length) {
-    console.error(`[WA:Status] ⚠️ No recipients found for story broadcast for ${userId}`);
-    throw new Error('No contacts available to define status visibility.');
-  }
+  if (!activeRecipients.length) throw new Error('No contacts available for status visibility.');
 
   const statusJidList = activeRecipients
     .filter(r => r !== 'status@broadcast')
     .map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
 
-  // 2. CRITICAL: Include the sender (yourself) so it appears in 'My Status' on your phone
+  // CRITICAL: Include sender ID for native device sync
   if (sock.user?.id) {
     const selfJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-    if (!statusJidList.includes(selfJid)) {
-      statusJidList.push(selfJid);
-    }
+    if (!statusJidList.includes(selfJid)) statusJidList.push(selfJid);
   }
 
-  console.log(`[WA:Status] 📢 Posting story for ${userId}. Visibility: ${statusJidList.length} total target(s)`);
+  const options = { statusJidList };
+  console.log(`[WA:Status] 📢 Rendering ${mediaType} story. Targets: ${statusJidList.length}`);
 
-  if (mediaUrl) {
-    // Image status
-    await sock.sendMessage('status@broadcast', { 
-       image: { url: mediaUrl }, 
-       caption: text 
-    }, { statusJidList });
-    return { success: true, type: 'image_status' };
+  if (mediaType === 'video') {
+    return await sock.sendMessage('status@broadcast', { video: { url: mediaUrl }, caption: text }, options);
+  } else if (mediaType === 'audio') {
+    return await sock.sendMessage('status@broadcast', { audio: { url: mediaUrl }, mimetype: 'audio/mp4', ptt: true }, options);
+  } else if (mediaType === 'image' || mediaUrl) {
+    return await sock.sendMessage('status@broadcast', { image: { url: mediaUrl }, caption: text }, options);
   } else {
-    // Text status
-    await sock.sendMessage('status@broadcast', { 
-      text 
-    }, { statusJidList });
-    return { success: true, type: 'text_status' };
+    return await sock.sendMessage('status@broadcast', { text }, options);
   }
 };
 

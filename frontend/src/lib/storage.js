@@ -10,9 +10,9 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://wishflow-backen
 export const uploadMedia = async (file) => {
   if (!file) return null;
   
-  // SIZE LIMIT: 2MB check
-  if (file.size > 2 * 1024 * 1024) {
-    throw new Error('File is too large! Please choose an image smaller than 2MB.');
+  // SIZE LIMIT: 32MB check for media support
+  if (file.size > 32 * 1024 * 1024) {
+    throw new Error('File is too large! Please choose a file smaller than 32MB.');
   }
 
   const { data: { user } } = await supabase.auth.getUser();
