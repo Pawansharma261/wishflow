@@ -315,25 +315,31 @@ const postWhatsAppStatus = async (
     );
 
     if (mediaType === 'video') {
-      return await sock.sendMessage(
+      const result = await sock.sendMessage(
         'status@broadcast',
         { video: { url: mediaUrl }, caption: text, ephemeralExpiration: STORY_EXPIRY },
         options
       );
+      console.log('[WA:STATUS:RESULT]', JSON.stringify(result, null, 2));
+      return result;
     } else if (mediaType === 'audio') {
-      return await sock.sendMessage(
+      const result = await sock.sendMessage(
         'status@broadcast',
         { audio: { url: mediaUrl }, mimetype: 'audio/mp4', ptt: true, ephemeralExpiration: STORY_EXPIRY },
         options
       );
+      console.log('[WA:STATUS:RESULT]', JSON.stringify(result, null, 2));
+      return result;
     } else if (mediaType === 'image' || mediaUrl) {
-      return await sock.sendMessage(
+      const result = await sock.sendMessage(
         'status@broadcast',
         { image: { url: mediaUrl }, caption: text, ephemeralExpiration: STORY_EXPIRY },
         options
       );
+      console.log('[WA:STATUS:RESULT]', JSON.stringify(result, null, 2));
+      return result;
     } else {
-      return await sock.sendMessage(
+      const result = await sock.sendMessage(
         'status@broadcast',
         {
           text,
@@ -344,6 +350,8 @@ const postWhatsAppStatus = async (
         },
         options
       );
+      console.log('[WA:STATUS:RESULT]', JSON.stringify(result, null, 2));
+      return result;
     }
   } catch (err) {
     console.error(`[WA:Status] ❌ Attempt ${attempt} failed: ${err.message}`);

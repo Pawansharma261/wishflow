@@ -1,4 +1,5 @@
 const { Redis } = require('@upstash/redis');
+require('dotenv').config(); // Load environment variables for standalone usage
 
 // Upstash Redis REST Client (Optimized for Render/Serverless)
 const redisClient = new Redis({
