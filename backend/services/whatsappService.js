@@ -266,9 +266,31 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', recipients
   const sock = await getActiveSocket(userId);
   if (!sock) throw new Error(`WhatsApp session not active for user ${userId}`);
 
-  if (!recipients.length) throw new Error('Recipients list is mandatory for WhatsApp status visibility.');
+  let activeRecipients = [...recipients];
+  
+  // 1. If no specific recipients passed (global story), fetch all user's contacts
+  if (activeRecipients.length === 0 || activeRecipients.includes('status@broadcast')) {
+    const { data: contacts } = await supabaseAdmin
+      .from('contacts')
+      .select('phone_number')
+      .eq('user_id', userId)
+      .not('phone_number', 'is', null);
+      
+    if (contacts && contacts.length > 0) {
+      activeRecipients = contacts.map(c => c.phone_number);
+    }
+  }
 
-  const statusJidList = recipients.map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
+  if (!activeRecipients.length) {
+    console.error(`[WA:Status] ⚠️ No recipients found for story broadcast for ${userId}`);
+    throw new Error('No contacts available to define status visibility.');
+  }
+
+  const statusJidList = activeRecipients
+    .filter(r => r !== 'status@broadcast')
+    .map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
+
+  console.log(`[WA:Status] 📢 Posting story for ${userId}. Visibility: ${statusJidList.length} contact(s)`);
 
   if (mediaUrl) {
     // Image status
