@@ -268,6 +268,7 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType 
 
   let activeRecipients = [...recipients];
   
+  // 1. If no specific recipients passed (global story), fetch all user's contacts
   if (activeRecipients.length === 0 || activeRecipients.includes('status@broadcast')) {
     const { data: contacts } = await supabaseAdmin
       .from('contacts')
@@ -280,21 +281,23 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType 
     }
   }
 
+  // 2. Map all recipients correctly
   const statusJidList = activeRecipients
-    .filter(r => r !== 'status@broadcast')
+    .filter(r => r && r !== 'status@broadcast')
     .map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
 
-  // CRITICAL: Include sender ID for native device sync.
-  // Move this BEFORE the throw check to support users with zero contacts.
+  // 3. CRITICAL: Include sender (YOU) for native device sync/visibility
   if (sock.user?.id) {
-    const selfJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-    if (!statusJidList.includes(selfJid)) statusJidList.push(selfJid);
+    const selfId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+    if (!statusJidList.includes(selfId)) {
+        statusJidList.push(selfId);
+    }
   }
 
-  if (!statusJidList.length) throw new Error('No contacts or sender info available for status visibility.');
+  if (!statusJidList.length) throw new Error('No valid recipients for story visibility.');
 
   const options = { statusJidList };
-  console.log(`[WA:Status] 📢 Rendering ${mediaType} story. Targets: ${statusJidList.length}`);
+  console.log(`[WA:Status] 📢 Rendering ${mediaType} story. Visibility count: ${statusJidList.length}`);
 
   if (mediaType === 'video') {
     return await sock.sendMessage('status@broadcast', { video: { url: mediaUrl }, caption: text }, options);
