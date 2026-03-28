@@ -282,25 +282,29 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType 
       }
     }
 
-    // 2. Map all recipients correctly
-    const statusJidList = activeRecipients
+    // 2. Map all recipients correctly (with strict formatting for stories)
+    let statusJidList = activeRecipients
       .filter(r => r && r !== 'status@broadcast')
       .map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
 
-    // 3. CRITICAL: Include sender (YOU) for native device sync/visibility
+    // 3. CRITICAL: Include sender (YOU) for native device sync/visibility 
+    // AND ensure it's the exact format required for stories.
     if (sock.user?.id) {
       const selfId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
       if (!statusJidList.includes(selfId)) {
-          statusJidList.push(selfId);
+          statusJidList.unshift(selfId); // Priority search
       }
     }
 
     if (!statusJidList.length) throw new Error('No valid recipients for story visibility.');
 
+    // Remove any potential duplicates and ensure it's a clean array of strings
+    statusJidList = [...new Set(statusJidList)];
+
     const options = { 
       statusJidList,
-      backgroundColor: '#312e81', // Premium Indigo background for text status
-      font: 1 // Standard clean font
+      backgroundColor: '#312e81', 
+      font: 1 
     };
 
     console.log(`[WA:Status] 📢 Rendering ${mediaType} story (Attempt ${attempt}). Targets: ${statusJidList.length}`);
@@ -322,7 +326,7 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', mediaType 
         caption: text 
       }, options);
     } else {
-      // For Text Status, Baileys sometimes needs the text inside a specific object or directly
+      // Baileys story messages often need to be specifically wrapped or mapped correctly
       return await sock.sendMessage('status@broadcast', { 
         text: text 
       }, options);
