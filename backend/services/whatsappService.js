@@ -290,7 +290,15 @@ const postWhatsAppStatus = async (userId, { text = '', mediaUrl = '', recipients
     .filter(r => r !== 'status@broadcast')
     .map(r => r.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
 
-  console.log(`[WA:Status] 📢 Posting story for ${userId}. Visibility: ${statusJidList.length} contact(s)`);
+  // 2. CRITICAL: Include the sender (yourself) so it appears in 'My Status' on your phone
+  if (sock.user?.id) {
+    const selfJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+    if (!statusJidList.includes(selfJid)) {
+      statusJidList.push(selfJid);
+    }
+  }
+
+  console.log(`[WA:Status] 📢 Posting story for ${userId}. Visibility: ${statusJidList.length} total target(s)`);
 
   if (mediaUrl) {
     // Image status
