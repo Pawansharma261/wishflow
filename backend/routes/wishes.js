@@ -18,16 +18,16 @@ router.get('/', async (req, res) => {
     .from('wishes')
     .select('*, contacts(name)')
     .eq('user_id', req.user.id)
-    .order('scheduled_datetime', { ascending: true });
+    .order('scheduled_for', { ascending: true });
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
 
 router.post('/', async (req, res) => {
-  const { contact_id, occasion_type, wish_message, media_url, scheduled_datetime, channels, is_recurring, recurrence_rule } = req.body;
+  const { contact_id, occasion_type, message, media_url, scheduled_for, channels, is_recurring, recurrence_rule } = req.body;
   const { data, error } = await supabaseAdmin.from('wishes').insert({
     user_id: req.user.id,
-    contact_id, occasion_type, wish_message, media_url, scheduled_datetime, channels, is_recurring, recurrence_rule
+    contact_id, occasion_type, message, media_url, scheduled_for, channels, is_recurring, recurrence_rule
   }).select();
   
   if (error) return res.status(400).json({ error: error.message });
@@ -54,9 +54,9 @@ router.post('/bulk-schedule', async (req, res) => {
         user_id: req.user.id,
         contact_id: contact?.id || null, // Fallback for schema compliance
         occasion_type: 'custom', // Limited by ENUM occasion_type
-        wish_message: text,
+        message: text,
         media_url: mediaUrl,
-        scheduled_datetime: scheduledAt,
+        scheduled_for: scheduledAt,
         status: 'pending',
         channels: ['whatsapp']
       };
