@@ -245,14 +245,14 @@ const Dashboard = () => {
         const diff = differenceInDays(birthday, new Date());
         if (diff < soonestDays) {
           soonestDays = diff;
-          soonestEvent = { name: c.name, date: birthday, type: 'Birthday \ud83c\udf82' };
+          soonestEvent = { name: c.name, date: birthday, type: 'Birthday 🎂' };
         }
       }
       if (anniversary) {
         const diff = differenceInDays(anniversary, new Date());
         if (diff < soonestDays) {
           soonestDays = diff;
-          soonestEvent = { name: c.name, date: anniversary, type: 'Anniversary \ud83d\udc8d' };
+          soonestEvent = { name: c.name, date: anniversary, type: 'Anniversary 💍' };
         }
       }
     }
@@ -273,7 +273,7 @@ const Dashboard = () => {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-10">
         <div>
           <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight mb-2">
-            Hey there! \ud83d\udc4b
+            Hey there! 👋
           </h1>
           <p className="text-white/60 font-medium">Your automated celebration assistant is ready.</p>
         </div>
@@ -510,7 +510,7 @@ const Dashboard = () => {
             {postType === 'status' && (
               <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-3xl p-8 animate-in fade-in slide-in-from-top-2 duration-300 relative overflow-hidden">
                  <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-10">
-                    <p className="text-white font-black uppercase tracking-widest text-lg">Coming Soon \ud83d\ude80</p>
+                    <p className="text-white font-black uppercase tracking-widest text-lg">Coming Soon 🚀</p>
                  </div>
                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 opacity-20 pointer-events-none">
                     <div className="flex items-center space-x-4">
