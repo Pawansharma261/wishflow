@@ -137,7 +137,8 @@ const Dashboard = () => {
     } catch (err) {
       alert(err.message);
     } finally {
-      setPostingStatus(false);
+      // Small Delay for UX
+      setTimeout(() => setPostingStatus(false), 500);
     }
   };
 
@@ -244,14 +245,14 @@ const Dashboard = () => {
         const diff = differenceInDays(birthday, new Date());
         if (diff < soonestDays) {
           soonestDays = diff;
-          soonestEvent = { name: c.name, date: birthday, type: 'Birthday 🎂' };
+          soonestEvent = { name: c.name, date: birthday, type: 'Birthday \ud83c\udf82' };
         }
       }
       if (anniversary) {
         const diff = differenceInDays(anniversary, new Date());
         if (diff < soonestDays) {
           soonestDays = diff;
-          soonestEvent = { name: c.name, date: anniversary, type: 'Anniversary ≡ƒÆì' };
+          soonestEvent = { name: c.name, date: anniversary, type: 'Anniversary \ud83d\udc8d' };
         }
       }
     }
@@ -265,12 +266,14 @@ const Dashboard = () => {
     { title: 'Pending', value: stats.pendingWishes, icon: <Clock className="text-orange-500" />, color: 'bg-orange-50', link: '/wishes?filter=pending' },
   ];
 
+  if (loading) return <div className="min-h-screen bg-[#0f0c29] flex items-center justify-center"><RefreshCw className="text-indigo-500 animate-spin" size={48} /></div>;
+
   return (
     <div className="container mx-auto px-4 lg:px-10 py-8 lg:py-12">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-10">
         <div>
           <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight mb-2">
-            Hey there! 👋
+            Hey there! \ud83d\udc4b
           </h1>
           <p className="text-white/60 font-medium">Your automated celebration assistant is ready.</p>
         </div>
@@ -502,10 +505,12 @@ const Dashboard = () => {
                     ))}
                 </div>
               </div>
-             {postType === 'status' && (
+            )}
+
+            {postType === 'status' && (
               <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-3xl p-8 animate-in fade-in slide-in-from-top-2 duration-300 relative overflow-hidden">
                  <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-10">
-                    <p className="text-white font-black uppercase tracking-widest text-lg">Coming Soon 🚀</p>
+                    <p className="text-white font-black uppercase tracking-widest text-lg">Coming Soon \ud83d\ude80</p>
                  </div>
                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 opacity-20 pointer-events-none">
                     <div className="flex items-center space-x-4">
@@ -519,8 +524,6 @@ const Dashboard = () => {
                     </div>
                  </div>
               </div>
-            )}
-
             )}
 
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-4">
@@ -659,6 +662,7 @@ const Dashboard = () => {
               ) : (
                 <>
                   <TrendingUp className="mb-4 text-white/80" size={32} />
+                  <h3 className="text-2xl font-black mb-2">No Upcoming Events</h3>
                   <h3 className="text-2xl font-black mb-2">No Upcoming Events</h3>
                   <p className="text-white/80 text-sm font-medium mb-6">Add contacts with birthdays & anniversaries to see celebrations here.</p>
                 </>
