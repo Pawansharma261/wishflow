@@ -18,6 +18,34 @@ app.set('io', io);
 const { getWhatsAppStatus, connectWhatsApp } = require('./services/whatsappService');
 const supabaseAdmin = require('./db/supabaseAdmin');
 
+// Auto-restore all previously connected WhatsApp sessions on server boot
+const autoRestoreWhatsAppSessions = async () => {
+  try {
+    const { data: users } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('whatsapp_connected', true);
+    
+    if (!users || users.length === 0) return;
+    
+    console.log(`[WishFlow] Auto-restoring ${users.length} WhatsApp session(s)...`);
+    
+    for (const user of users) {
+      try {
+        await connectWhatsApp(user.id, io);
+        console.log(`[WishFlow] ✅ Session restored for ${user.id}`);
+      } catch (e) {
+        console.error(`[WishFlow] ❌ Restore failed for ${user.id}:`, e.message);
+      }
+    }
+  } catch (err) {
+    console.error('[WishFlow] Auto-restore error:', err.message);
+  }
+};
+
+// Run after server starts — delay 3s to let socket.io initialize
+setTimeout(autoRestoreWhatsAppSessions, 3000);
+
 // Handle socket connections
 io.on('connection', (socket) => {
   console.log(`[Socket] Client connected: ${socket.id}`);
@@ -137,34 +165,6 @@ cron.schedule('* * * * *', () => {
   wishTrigger.checkAndSendWishes();
 });
 
-// Auto-restore all previously connected WhatsApp sessions on server boot
-const autoRestoreWhatsAppSessions = async () => {
-  try {
-    const { data: users } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('whatsapp_connected', true);
-    
-    if (!users || users.length === 0) return;
-    
-    console.log(`[WishFlow] Auto-restoring ${users.length} WhatsApp session(s)...`);
-    
-    for (const user of users) {
-      try {
-        // Small delay between restores to prevent Redis/WhatsApp rate limits
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await connectWhatsApp(user.id, io);
-        console.log(`[WishFlow] ✅ Session restored for ${user.id}`);
-      } catch (e) {
-        console.error(`[WishFlow] ❌ Restore failed for ${user.id}:`, e.message);
-      }
-    }
-  } catch (err) {
-    console.error('[WishFlow] Auto-restore error:', err.message);
-  }
-};
-
 server.listen(PORT, () => {
   console.log(`[WishFlow] Server (HTTP + WS) running on port ${PORT} 🚀`);
-  autoRestoreWhatsAppSessions();
 });

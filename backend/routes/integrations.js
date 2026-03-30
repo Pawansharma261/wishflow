@@ -20,6 +20,7 @@ const { pairPhoneLimiter, forceResetLimiter, sendLimiter } = require('../middlew
 router.get('/whatsapp/status', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
+    const { getWhatsAppStatus } = require('../services/whatsappService');
     const liveStatus = getWhatsAppStatus(userId);
     
     // Also check DB as fallback
