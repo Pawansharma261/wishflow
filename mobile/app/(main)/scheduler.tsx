@@ -167,9 +167,9 @@ export default function Scheduler() {
     const { error } = await supabase.from('wishes').insert({ 
       contact_id: formData.contact_id,
       occasion_type: formData.occasion_type,
-      message: formData.wish_message,
+      wish_message: formData.wish_message,
       media_url: formData.media_url,
-      scheduled_for: utcDate,
+      scheduled_datetime: utcDate,
       channels: formData.channels,
       is_recurring: formData.is_recurring,
       recurrence_rule: formData.recurrence_rule,

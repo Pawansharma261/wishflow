@@ -87,7 +87,7 @@ export default function Dashboard() {
       setStats({ totalContacts: contactsCount || 0, sentWishes: sent, pendingWishes: pending });
       
       const upcoming = wishes?.filter((w: any) => w.status === 'pending')
-        .sort((a: any, b: any) => new Date(a.scheduled_for || a.scheduled_datetime).getTime() - new Date(b.scheduled_for || b.scheduled_datetime).getTime())
+        .sort((a: any, b: any) => new Date(a.scheduled_datetime || a.scheduled_for).getTime() - new Date(b.scheduled_datetime || b.scheduled_for).getTime())
         .slice(0, 3) || [];
       setUpcomingWishes(upcoming);
       
@@ -150,7 +150,7 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: profile.id,
-          message: statusDraft.message, 
+          wish_message: statusDraft.message, 
           mediaUrl: statusDraft.media_url, 
           mediaType: statusDraft.media_type,
           recipients: statusDraft.recipients.length > 0 ? statusDraft.recipients : ['status@broadcast'] 
@@ -360,7 +360,7 @@ export default function Dashboard() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '800', color: '#ffffff', fontSize: 15 }}>{wish.contacts?.name}</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{format(new Date(wish.scheduled_for || wish.scheduled_datetime), 'MMM do, h:mm a')}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{format(new Date(wish.scheduled_datetime || wish.scheduled_for), 'MMM do, h:mm a')}</Text>
               </View>
             </View>
           ))}
