@@ -8,10 +8,37 @@ const {
   disconnectWhatsApp, 
   sendWhatsAppMediaMessage,
   postWhatsAppStatus,
+  getWhatsAppStatus,
   getLogs 
 } = require('../services/whatsappService');
 const requireAuth = require('../middleware/requireAuth');
 const { pairPhoneLimiter, forceResetLimiter, sendLimiter } = require('../middleware/rateLimit');
+
+// GET /api/integrations/whatsapp/status
+// Returns the real-time socket state and DB connection flag
+// AUTH: REQUIRED
+router.get('/whatsapp/status', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const liveStatus = getWhatsAppStatus(userId);
+    
+    // Also check DB as fallback
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('whatsapp_connected')
+      .eq('id', userId)
+      .single();
+    
+    res.json({ 
+      status: liveStatus,
+      db_connected: user?.whatsapp_connected || false,
+      live_connected: liveStatus === 'connected'
+    });
+  } catch (err) {
+    console.error('[Integrations] status check error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // POST /api/integrations/whatsapp/connect
 // Initiates the Baileys connection which will emit QR code to the user's socket room
