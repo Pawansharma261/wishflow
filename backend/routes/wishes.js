@@ -43,12 +43,28 @@ router.post('/bulk-schedule', async (req, res) => {
   }
 
   try {
+    // Optimization: Fetch all contacts for this user once to map phone -> id
+    const { data: userContacts } = await supabaseAdmin
+      .from('contacts')
+      .select('id, phone_number')
+      .eq('user_id', req.user.id);
+    
+    const contactMap = {};
+    (userContacts || []).forEach(c => {
+      if (c.phone_number) {
+        // Normalize: Strip +, spaces, etc if needed, but here we assume match
+        contactMap[c.phone_number] = c.id;
+      }
+    });
+
     const items = recipients.map(phone => {
       const isStatusStory = phone === 'status@broadcast';
+      // Hydrate contact_id if it exists in our map
+      const contactId = contactMap[phone] || null;
+
       return {
         user_id: req.user.id,
-        contact_id: null, 
-        contact_phone: phone, // CRITICAL: Save the target phone number!
+        contact_id: contactId, 
         occasion_type: isStatusStory ? 'status_story' : 'custom_broadcast',
         wish_message: text,
         media_url: mediaUrl,

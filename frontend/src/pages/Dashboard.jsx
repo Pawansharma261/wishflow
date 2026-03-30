@@ -215,7 +215,7 @@ const Dashboard = () => {
 
     const { data: wishes } = await supabase
       .from('wishes')
-      .select('*')
+      .select('*, contacts(name)')
       .eq('user_id', user.id);
 
     const sent = wishes?.filter(w => w.status === 'sent').length || 0;

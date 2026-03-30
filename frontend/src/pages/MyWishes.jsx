@@ -41,7 +41,7 @@ const MyWishes = () => {
     if (user) setUserId(user.id);
     const { data, error } = await supabase
       .from('wishes')
-      .select('*')
+      .select('*, contacts(name)')
       .eq('user_id', user.id)
       .order('scheduled_datetime', { ascending: false });
     
