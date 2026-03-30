@@ -301,10 +301,10 @@ export default function Dashboard() {
 
           <TouchableOpacity 
             onPress={handlePostStatus}
-            disabled={isPosting || (statusDraft.media_type !== 'text' && !statusDraft.media_url) || (statusDraft.media_type === 'text' && !statusDraft.message)}
-            style={{ backgroundColor: '#0f172a', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, opacity: (isPosting || (statusDraft.media_type !== 'text' && !statusDraft.media_url)) ? 0.6 : 1, shadowColor: '#0f172a', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 }}
+            disabled={true}
+            style={{ backgroundColor: '#1e293b', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10, opacity: 0.8 }}
           >
-             {isPosting ? <ActivityIndicator size="small" color="#fff" /> : <><Send size={20} color="#fff" /><Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>Instant WhatsApp Post</Text></>}
+             <Text style={{ color: 'rgba(255,255,255,0.4)', fontWeight: '900', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1.5 }}>Coming Soon 🚀</Text>
           </TouchableOpacity>
         </View>
 

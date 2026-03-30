@@ -352,7 +352,7 @@ const Dashboard = () => {
                       onClick={() => setPostType('status')}
                       className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg transition-all ${postType === 'status' ? 'bg-indigo-500 text-white' : 'bg-white/5 text-white/40'}`}
                    >
-                      WhatsApp Status
+                      WhatsApp Status (Coming Soon)
                    </button>
                 </div>
               </div>
@@ -502,11 +502,12 @@ const Dashboard = () => {
                     ))}
                 </div>
               </div>
-            )}
-
-            {postType === 'status' && (
-              <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-3xl p-8 animate-in fade-in slide-in-from-top-2 duration-300">
-                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+             {postType === 'status' && (
+              <div className="bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-3xl p-8 animate-in fade-in slide-in-from-top-2 duration-300 relative overflow-hidden">
+                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-10">
+                    <p className="text-white font-black uppercase tracking-widest text-lg">Coming Soon 🚀</p>
+                 </div>
+                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 opacity-20 pointer-events-none">
                     <div className="flex items-center space-x-4">
                        <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center relative ring-4 ring-indigo-500/20 ring-offset-4 ring-offset-[#0f0c29]">
                          <Send className="text-indigo-400" size={32} />
@@ -516,22 +517,10 @@ const Dashboard = () => {
                           <p className="text-[10px] text-white/40 font-medium uppercase tracking-widest mt-1">Visible to your saved contacts</p>
                        </div>
                     </div>
-
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center space-x-6">
-                        <div className="flex items-center space-x-2 text-indigo-400">
-                          <Calendar size={14} />
-                          <span className="text-[10px] font-black uppercase tracking-widest">Post At:</span>
-                        </div>
-                        <input 
-                          type="datetime-local"
-                          className="bg-transparent border-none text-white text-[10px] font-black uppercase tracking-widest focus:ring-0 cursor-pointer"
-                          style={{ colorScheme: 'dark' }}
-                          value={statusDraft.scheduledAt}
-                          onChange={(e) => setStatusDraft(prev => ({ ...prev, scheduledAt: e.target.value }))}
-                        />
-                    </div>
                  </div>
               </div>
+            )}
+
             )}
 
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-4">
